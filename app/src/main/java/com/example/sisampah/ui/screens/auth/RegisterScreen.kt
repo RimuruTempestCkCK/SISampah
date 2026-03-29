@@ -24,6 +24,7 @@ fun RegisterScreen(
     onNavigateToLogin: () -> Unit
 ) {
     // State variables
+    var nama by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
@@ -56,6 +57,17 @@ fun RegisterScreen(
 
         // Input fields
         fun Modifier.standardField() = this.fillMaxWidth().then(Modifier)
+
+        OutlinedTextField(
+            value = nama,
+            onValueChange = { nama = it },
+            label = { Text("Nama Lengkap") },
+            modifier = Modifier.standardField(),
+            shape = MaterialTheme.shapes.medium,
+            enabled = !isLoading
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
             value = username,
@@ -98,7 +110,7 @@ fun RegisterScreen(
                 onClick = {
                     // Validation
                     when {
-                        username.isEmpty() || password.isEmpty() || confirmPassword.isEmpty() ->
+                        nama.isEmpty() || username.isEmpty() || password.isEmpty() || confirmPassword.isEmpty() ->
                             Toast.makeText(context, "Isi semua bidang!", Toast.LENGTH_SHORT).show()
                         password != confirmPassword ->
                             Toast.makeText(context, "Password tidak cocok!", Toast.LENGTH_SHORT).show()
@@ -118,13 +130,14 @@ fun RegisterScreen(
                                                 Toast.makeText(context, "Username sudah digunakan!", Toast.LENGTH_SHORT).show()
                                             }
                                         } else {
-                                            // Insert user baru
+                                            // Insert user baru dengan nama
                                             val insertStmt = conn.prepareStatement(
-                                                "INSERT INTO users (username, password, role) VALUES (?, ?, ?)"
+                                                "INSERT INTO users (username, nama, password, role) VALUES (?, ?, ?, ?)"
                                             )
                                             insertStmt.setString(1, username)
-                                            insertStmt.setString(2, password)
-                                            insertStmt.setString(3, UserRole.MASYARAKAT.name)
+                                            insertStmt.setString(2, nama)
+                                            insertStmt.setString(3, password)
+                                            insertStmt.setString(4, UserRole.MASYARAKAT.name)
 
                                             val rowsAffected = insertStmt.executeUpdate()
                                             withContext(Dispatchers.Main) {
