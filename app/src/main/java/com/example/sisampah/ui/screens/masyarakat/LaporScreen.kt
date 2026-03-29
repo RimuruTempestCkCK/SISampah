@@ -1,6 +1,10 @@
 package com.example.sisampah.ui.screens.masyarakat
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.location.Geocoder
 import android.net.Uri
 import android.util.Base64
 import android.widget.Toast
@@ -15,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.*
@@ -29,15 +34,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.sisampah.data.MySqlHelper
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.*
 
 private val GreenPrimary = Color(0xFF2E7D32)
 
 @Composable
-fun LaporScreen() {
+fun LaporScreen(currentUsername: String = "Warga") {
     var location by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
@@ -45,11 +54,26 @@ fun LaporScreen() {
     
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    val launcher = rememberLauncherForActivityResult(
+    val imageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         imageUri = uri
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        ) {
+            getCurrentLocation(context, fusedLocationClient) { addr ->
+                location = addr
+            }
+        } else {
+            Toast.makeText(context, "Izin lokasi ditolak", Toast.LENGTH_SHORT).show()
+        }
     }
 
     // ── Migrasi Database ──
@@ -59,13 +83,12 @@ fun LaporScreen() {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
                     val meta = conn.metaData
-                    val rs = meta.getColumns(null, null, "trash_reports", "image")
-                    if (!rs.next()) {
-                        val stmt = conn.createStatement()
-                        stmt.executeUpdate("ALTER TABLE trash_reports ADD COLUMN image LONGTEXT NULL")
-                        stmt.close()
+                    // Pastikan kolom image ada
+                    val rsImg = meta.getColumns(null, null, "trash_reports", "image")
+                    if (!rsImg.next()) {
+                        conn.createStatement().executeUpdate("ALTER TABLE trash_reports ADD COLUMN image LONGTEXT NULL")
                     }
-                    rs.close()
+                    rsImg.close()
                     conn.close()
                 }
             } catch (e: Exception) { e.printStackTrace() }
@@ -116,7 +139,7 @@ fun LaporScreen() {
                             .clip(RoundedCornerShape(12.dp))
                             .background(Color(0xFFF0F0F0))
                             .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
-                            .clickable { launcher.launch("image/*") },
+                            .clickable { imageLauncher.launch("image/*") },
                         contentAlignment = Alignment.Center
                     ) {
                         if (imageUri == null) {
@@ -127,8 +150,10 @@ fun LaporScreen() {
                             }
                         } else {
                             val bitmap = remember(imageUri) {
-                                val inputStream = context.contentResolver.openInputStream(imageUri!!)
-                                BitmapFactory.decodeStream(inputStream)?.asImageBitmap()
+                                try {
+                                    val inputStream = context.contentResolver.openInputStream(imageUri!!)
+                                    BitmapFactory.decodeStream(inputStream)?.asImageBitmap()
+                                } catch (e: Exception) { null }
                             }
                             if (bitmap != null) {
                                 Image(
@@ -142,15 +167,40 @@ fun LaporScreen() {
                     }
 
                     // ── Lokasi ──
-                    OutlinedTextField(
-                        value = location,
-                        onValueChange = { location = it },
-                        label = { Text("Lokasi Kejadian") },
-                        leadingIcon = { Icon(Icons.Default.Place, null, tint = GreenPrimary) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        enabled = !isLoading
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = location,
+                            onValueChange = { location = it },
+                            label = { Text("Lokasi Kejadian") },
+                            leadingIcon = { Icon(Icons.Default.Place, null, tint = GreenPrimary) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            enabled = !isLoading
+                        )
+                        
+                        OutlinedButton(
+                            onClick = {
+                                val permissions = arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
+                                if (permissions.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) {
+                                    getCurrentLocation(context, fusedLocationClient) { addr ->
+                                        location = addr
+                                    }
+                                } else {
+                                    permissionLauncher.launch(permissions)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(GreenPrimary))
+                        ) {
+                            Icon(Icons.Default.MyLocation, null, tint = GreenPrimary, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Dapatkan Lokasi (GPS)", color = GreenPrimary)
+                        }
+                    }
 
                     // ── Deskripsi ──
                     OutlinedTextField(
@@ -178,7 +228,7 @@ fun LaporScreen() {
                                         val imageBase64 = uriToBase64(imageUri!!)
                                         val query = "INSERT INTO trash_reports (reporterName, location, description, status, image, timestamp) VALUES (?, ?, ?, ?, ?, NOW())"
                                         val stmt = conn.prepareStatement(query)
-                                        stmt.setString(1, "Warga") 
+                                        stmt.setString(1, currentUsername) // Menggunakan username yang sedang login
                                         stmt.setString(2, location)
                                         stmt.setString(3, description)
                                         stmt.setString(4, "Menunggu")
@@ -207,6 +257,33 @@ fun LaporScreen() {
                     }
                 }
             }
+        }
+    }
+}
+
+private fun getCurrentLocation(
+    context: Context,
+    fusedLocationClient: FusedLocationProviderClient,
+    onLocationReceived: (String) -> Unit
+) {
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+
+    fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+        if (loc != null) {
+            try {
+                val geocoder = Geocoder(context, Locale.getDefault())
+                val addresses = geocoder.getFromLocation(loc.latitude, loc.longitude, 1)
+                if (addresses?.isNotEmpty() == true) {
+                    val address = addresses[0].getAddressLine(0)
+                    onLocationReceived(address)
+                } else {
+                    onLocationReceived("${loc.latitude}, ${loc.longitude}")
+                }
+            } catch (e: Exception) {
+                onLocationReceived("${loc.latitude}, ${loc.longitude}")
+            }
+        } else {
+            Toast.makeText(context, "Gagal mendapatkan lokasi GPS. Pastikan GPS aktif.", Toast.LENGTH_SHORT).show()
         }
     }
 }

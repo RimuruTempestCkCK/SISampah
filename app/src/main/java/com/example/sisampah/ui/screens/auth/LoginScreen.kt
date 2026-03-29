@@ -26,7 +26,7 @@ import kotlinx.coroutines.withContext
 
 @Composable
 fun LoginScreen(
-    onLoginSuccess: (UserRole) -> Unit,
+    onLoginSuccess: (UserRole, String) -> Unit,
     onNavigateToRegister: () -> Unit
 ) {
     var username by remember { mutableStateOf("") }
@@ -114,11 +114,12 @@ fun LoginScreen(
                                         val roleStr = roleRaw.trim().uppercase()
                                         Log.d("LoginScreen", "Role found: '$roleStr'")
                                         
+                                        val loggedInUsername = username // Capture current username
                                         withContext(Dispatchers.Main) {
                                             try {
                                                 val role = UserRole.valueOf(roleStr)
                                                 Toast.makeText(context, "Login Berhasil!", Toast.LENGTH_SHORT).show()
-                                                onLoginSuccess(role)
+                                                onLoginSuccess(role, loggedInUsername)
                                             } catch (e: Exception) {
                                                 Toast.makeText(context, "Role '$roleStr' tidak dikenal!", Toast.LENGTH_SHORT).show()
                                             }

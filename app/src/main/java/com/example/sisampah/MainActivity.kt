@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -32,11 +32,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
+    var loggedInUsername by remember { mutableStateOf("") }
 
     NavHost(navController = navController, startDestination = "login") {
         composable("login") {
             LoginScreen(
-                onLoginSuccess = { role ->
+                onLoginSuccess = { role, username ->
+                    loggedInUsername = username
                     val destination = when (role) {
                         UserRole.MASYARAKAT -> "masyarakat_dashboard"
                         UserRole.PETUGAS_LPS -> "petugas_dashboard"
@@ -65,11 +67,14 @@ fun AppNavigation() {
         }
 
         composable("masyarakat_dashboard") {
-            MasyarakatDashboard(onLogout = {
-                navController.navigate("login") {
-                    popUpTo("masyarakat_dashboard") { inclusive = true }
+            MasyarakatDashboard(
+                username = loggedInUsername,
+                onLogout = {
+                    navController.navigate("login") {
+                        popUpTo("masyarakat_dashboard") { inclusive = true }
+                    }
                 }
-            })
+            )
         }
 
         composable("petugas_dashboard") {
