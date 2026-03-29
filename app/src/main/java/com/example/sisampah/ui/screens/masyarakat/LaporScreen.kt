@@ -10,6 +10,9 @@ import android.util.Base64
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,15 +21,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.Notes
-import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -43,7 +44,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.*
 
-private val GreenPrimary = Color(0xFF2E7D32)
+private val Green700 = Color(0xFF2E7D32)
+private val Green500 = Color(0xFF4CAF50)
+private val RedAccent = Color(0xFFE53935)
 
 @Composable
 fun LaporScreen(currentUsername: String = "Warga") {
@@ -51,6 +54,7 @@ fun LaporScreen(currentUsername: String = "Warga") {
     var description by remember { mutableStateOf("") }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
     
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -83,7 +87,6 @@ fun LaporScreen(currentUsername: String = "Warga") {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
                     val meta = conn.metaData
-                    // Pastikan kolom image ada
                     val rsImg = meta.getColumns(null, null, "trash_reports", "image")
                     if (!rsImg.next()) {
                         conn.createStatement().executeUpdate("ALTER TABLE trash_reports ADD COLUMN image LONGTEXT NULL")
@@ -99,7 +102,6 @@ fun LaporScreen(currentUsername: String = "Warga") {
         migrateDatabase()
     }
 
-    // Helper: Convert Uri to Base64
     fun uriToBase64(uri: Uri): String? {
         return try {
             val inputStream = context.contentResolver.openInputStream(uri)
@@ -111,149 +113,189 @@ fun LaporScreen(currentUsername: String = "Warga") {
         }
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
-            Text("Buat Laporan Baru", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GreenPrimary)
-            Text("Laporkan penumpukan sampah di sekitar Anda", fontSize = 13.sp, color = Color.Gray)
+    Column(Modifier.fillMaxSize().background(Color(0xFFF5F5F5))) {
+        // ── Header Banner ──
+        Box(
+            Modifier.fillMaxWidth()
+                .background(Brush.horizontalGradient(listOf(Green700, Green500)))
+                .padding(horizontal = 20.dp, vertical = 22.dp)
+        ) {
+            Column {
+                Text("Buat Laporan Baru", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text("Laporkan penumpukan sampah di sekitar Anda", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+            }
         }
 
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(2.dp)
-            ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    
-                    // ── Foto Sampah ──
-                    Text("Foto Sampah", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF0F0F0))
-                            .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
-                            .clickable { imageLauncher.launch("image/*") },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (imageUri == null) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Default.AddPhotoAlternate, null, tint = Color.Gray, modifier = Modifier.size(48.dp))
-                                Spacer(Modifier.height(8.dp))
-                                Text("Pilih Foto Sampah", color = Color.Gray, fontSize = 13.sp)
-                            }
-                        } else {
-                            val bitmap = remember(imageUri) {
-                                try {
-                                    val inputStream = context.contentResolver.openInputStream(imageUri!!)
-                                    BitmapFactory.decodeStream(inputStream)?.asImageBitmap()
-                                } catch (e: Exception) { null }
-                            }
-                            if (bitmap != null) {
-                                Image(
-                                    bitmap = bitmap,
-                                    contentDescription = "Preview",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
+        // ── Error Banner ──
+        AnimatedVisibility(visible = errorMsg != null, enter = fadeIn(), exit = fadeOut()) {
+            errorMsg?.let { msg ->
+                Card(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = RedAccent.copy(0.1f)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.ErrorOutline, null, tint = RedAccent)
+                        Spacer(Modifier.width(8.dp))
+                        Text(msg, color = RedAccent, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { errorMsg = null }) { Icon(Icons.Default.Close, null, tint = RedAccent) }
+                    }
+                }
+            }
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(2.dp)
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        
+                        Text("Foto Sampah", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFFF0F0F0))
+                                .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
+                                .clickable { imageLauncher.launch("image/*") },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (imageUri == null) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Default.AddPhotoAlternate, null, tint = Color.Gray, modifier = Modifier.size(48.dp))
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("Pilih Foto Sampah", color = Color.Gray, fontSize = 13.sp)
+                                }
+                            } else {
+                                val bitmap = remember(imageUri) {
+                                    try {
+                                        val inputStream = context.contentResolver.openInputStream(imageUri!!)
+                                        BitmapFactory.decodeStream(inputStream)?.asImageBitmap()
+                                    } catch (e: Exception) { null }
+                                }
+                                if (bitmap != null) {
+                                    Image(
+                                        bitmap = bitmap,
+                                        contentDescription = "Preview",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    // ── Lokasi ──
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = location,
-                            onValueChange = { location = it },
-                            label = { Text("Lokasi Kejadian") },
-                            leadingIcon = { Icon(Icons.Default.Place, null, tint = GreenPrimary) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            enabled = !isLoading
-                        )
-                        
-                        OutlinedButton(
-                            onClick = {
-                                val permissions = arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = location,
+                                onValueChange = { location = it },
+                                label = { Text("Lokasi Kejadian") },
+                                leadingIcon = { Icon(Icons.Default.Place, null, tint = Green700) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                enabled = !isLoading,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Green700,
+                                    unfocusedBorderColor = Color.LightGray,
+                                    focusedContainerColor = Color.White,
+                                    unfocusedContainerColor = Color.White
                                 )
-                                if (permissions.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) {
-                                    getCurrentLocation(context, fusedLocationClient) { addr ->
-                                        location = addr
+                            )
+                            
+                            OutlinedButton(
+                                onClick = {
+                                    val permissions = arrayOf(
+                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                        Manifest.permission.ACCESS_COARSE_LOCATION
+                                    )
+                                    if (permissions.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) {
+                                        getCurrentLocation(context, fusedLocationClient) { addr ->
+                                            location = addr
+                                        }
+                                    } else {
+                                        permissionLauncher.launch(permissions)
                                     }
-                                } else {
-                                    permissionLauncher.launch(permissions)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(Green700))
+                            ) {
+                                Icon(Icons.Default.MyLocation, null, tint = Green700, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Dapatkan Lokasi (GPS)", color = Green700)
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = description,
+                            onValueChange = { description = it },
+                            label = { Text("Deskripsi Kondisi") },
+                            leadingIcon = { Icon(Icons.Default.Notes, null, tint = Green700) },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3,
+                            shape = RoundedCornerShape(10.dp),
+                            enabled = !isLoading,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Green700,
+                                unfocusedBorderColor = Color.LightGray,
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            )
+                        )
+
+                        Button(
+                            onClick = {
+                                if (location.isBlank() || description.isBlank() || imageUri == null) {
+                                    errorMsg = "Harap lengkapi semua data dan foto!"
+                                    return@Button
+                                }
+                                isLoading = true
+                                scope.launch(Dispatchers.IO) {
+                                    try {
+                                        val conn = MySqlHelper.getConnection()
+                                        if (conn != null) {
+                                            val imageBase64 = uriToBase64(imageUri!!)
+                                            val query = "INSERT INTO trash_reports (reporterName, location, description, status, image, timestamp) VALUES (?, ?, ?, ?, ?, NOW())"
+                                            val stmt = conn.prepareStatement(query)
+                                            stmt.setString(1, currentUsername)
+                                            stmt.setString(2, location)
+                                            stmt.setString(3, description)
+                                            stmt.setString(4, "Menunggu")
+                                            stmt.setString(5, imageBase64)
+                                            stmt.executeUpdate()
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(context, "Laporan Terkirim!", Toast.LENGTH_SHORT).show()
+                                                location = ""; description = ""; imageUri = null; errorMsg = null
+                                            }
+                                            conn.close()
+                                        }
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) { errorMsg = "Error: ${e.message}" }
+                                    } finally {
+                                        withContext(Dispatchers.Main) { isLoading = false }
+                                    }
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
                             shape = RoundedCornerShape(10.dp),
-                            border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(GreenPrimary))
+                            colors = ButtonDefaults.buttonColors(containerColor = Green700),
+                            enabled = !isLoading
                         ) {
-                            Icon(Icons.Default.MyLocation, null, tint = GreenPrimary, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Dapatkan Lokasi (GPS)", color = GreenPrimary)
+                            if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                            else {
+                                Icon(Icons.Default.Send, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Kirim Laporan", fontWeight = FontWeight.Bold)
+                            }
                         }
-                    }
-
-                    // ── Deskripsi ──
-                    OutlinedTextField(
-                        value = description,
-                        onValueChange = { description = it },
-                        label = { Text("Deskripsi Kondisi") },
-                        leadingIcon = { Icon(Icons.Default.Notes, null, tint = GreenPrimary) },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 3,
-                        shape = RoundedCornerShape(10.dp),
-                        enabled = !isLoading
-                    )
-
-                    Button(
-                        onClick = {
-                            if (location.isBlank() || description.isBlank() || imageUri == null) {
-                                Toast.makeText(context, "Harap lengkapi semua data dan foto!", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            isLoading = true
-                            scope.launch(Dispatchers.IO) {
-                                try {
-                                    val conn = MySqlHelper.getConnection()
-                                    if (conn != null) {
-                                        val imageBase64 = uriToBase64(imageUri!!)
-                                        val query = "INSERT INTO trash_reports (reporterName, location, description, status, image, timestamp) VALUES (?, ?, ?, ?, ?, NOW())"
-                                        val stmt = conn.prepareStatement(query)
-                                        stmt.setString(1, currentUsername) // Menggunakan username yang sedang login
-                                        stmt.setString(2, location)
-                                        stmt.setString(3, description)
-                                        stmt.setString(4, "Menunggu")
-                                        stmt.setString(5, imageBase64)
-                                        stmt.executeUpdate()
-                                        withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, "Laporan Terkirim!", Toast.LENGTH_SHORT).show()
-                                            location = ""; description = ""; imageUri = null
-                                        }
-                                        conn.close()
-                                    }
-                                } catch (e: Exception) {
-                                    withContext(Dispatchers.Main) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show() }
-                                } finally {
-                                    withContext(Dispatchers.Main) { isLoading = false }
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
-                        enabled = !isLoading
-                    ) {
-                        if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-                        else Text("Kirim Laporan", fontWeight = FontWeight.Bold)
                     }
                 }
             }
