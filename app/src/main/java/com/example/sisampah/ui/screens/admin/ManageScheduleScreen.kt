@@ -39,7 +39,6 @@ private val Green700    = Color(0xFF2E7D32)
 private val Green500    = Color(0xFF4CAF50)
 private val RedAccent   = Color(0xFFE53935)
 private val Blue700     = Color(0xFF1565C0)
-private val Purple700   = Color(0xFF6A1B9A)
 private val Amber500    = Color(0xFFFFC107)
 
 // ─── Model ─────────────────────────────────────────────────────────────────────
@@ -56,9 +55,6 @@ private val HARI = listOf(
     "SEMUA", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"
 )
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  SCREEN UTAMA
-// ═══════════════════════════════════════════════════════════════════════════════
 @Composable
 fun ManageScheduleScreen() {
     val context = LocalContext.current
@@ -75,27 +71,6 @@ fun ManageScheduleScreen() {
     var scheduleToDelete by remember { mutableStateOf<Schedule?>(null) }
     var errorMsg         by remember { mutableStateOf<String?>(null) }
 
-    // ── Migrasi Database ──
-    fun migrateDatabase() {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val conn = MySqlHelper.getConnection()
-                if (conn != null) {
-                    val meta = conn.metaData
-                    val rs = meta.getColumns(null, null, "schedules", "petugas_id")
-                    if (!rs.next()) {
-                        val stmt = conn.createStatement()
-                        stmt.executeUpdate("ALTER TABLE schedules ADD COLUMN petugas_id INT NULL")
-                        stmt.close()
-                    }
-                    rs.close()
-                    conn.close()
-                }
-            } catch (e: Exception) { e.printStackTrace() }
-        }
-    }
-
-    // ── Load Petugas ──
     fun loadPetugas() {
         scope.launch(Dispatchers.IO) {
             try {
@@ -114,7 +89,6 @@ fun ManageScheduleScreen() {
         }
     }
 
-    // ── Load Data ──
     fun loadData() {
         isLoading = true
         scope.launch(Dispatchers.IO) {
@@ -142,8 +116,6 @@ fun ManageScheduleScreen() {
                         )
                     }
                     rs.close(); conn.close()
-                } else {
-                    withContext(Dispatchers.Main) { errorMsg = "Gagal terhubung ke database." }
                 }
                 withContext(Dispatchers.Main) { schedules = list; errorMsg = null }
             } catch (e: Exception) {
@@ -154,8 +126,37 @@ fun ManageScheduleScreen() {
         }
     }
 
-    // ── Fungsi DB ──
+    // ── Fungsi DB dengan pengecekan bentrok ──
+    fun getConflictMessage(lokasi: String, hari: String, jam: String, petugasId: Int?, excludeId: Int? = null): String? {
+        // 1. Cek bentrok Petugas
+        if (petugasId != null) {
+            val petugasConflict = schedules.find { 
+                it.petugasId == petugasId && it.hari == hari && it.jam == jam && it.id != excludeId 
+            }
+            if (petugasConflict != null) {
+                return "Petugas tersebut sudah memiliki jadwal di ${petugasConflict.lokasi} pada waktu yang sama!"
+            }
+        }
+        
+        // 2. Cek bentrok Lokasi
+        val lokasiConflict = schedules.find {
+            it.lokasi.equals(lokasi, ignoreCase = true) && it.hari == hari && it.jam == jam && it.id != excludeId
+        }
+        if (lokasiConflict != null) {
+            return "Lokasi ini sudah memiliki jadwal pengangkutan pada waktu tersebut!"
+        }
+        
+        return null
+    }
+
     fun insertSchedule(lokasi: String, hari: String, jam: String, petugasId: Int?, onDone: (Boolean) -> Unit) {
+        val conflict = getConflictMessage(lokasi, hari, jam, petugasId)
+        if (conflict != null) {
+            Toast.makeText(context, conflict, Toast.LENGTH_LONG).show()
+            onDone(false)
+            return
+        }
+        
         scope.launch(Dispatchers.IO) {
             try {
                 val conn = MySqlHelper.getConnection()
@@ -165,15 +166,13 @@ fun ManageScheduleScreen() {
                     stmt.setString(2, hari)
                     stmt.setString(3, jam)
                     if (petugasId != null) stmt.setInt(4, petugasId) else stmt.setNull(4, java.sql.Types.INTEGER)
-                    val rows = stmt.executeUpdate()
+                    stmt.executeUpdate()
                     stmt.close(); conn.close()
                     withContext(Dispatchers.Main) {
-                        if (rows > 0) {
-                            Toast.makeText(context, "Jadwal berhasil ditambahkan!", Toast.LENGTH_SHORT).show()
-                            onDone(true)
-                        } else onDone(false)
+                        Toast.makeText(context, "Jadwal berhasil ditambahkan!", Toast.LENGTH_SHORT).show()
+                        onDone(true)
                     }
-                } else onDone(false)
+                }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -184,6 +183,13 @@ fun ManageScheduleScreen() {
     }
 
     fun updateSchedule(id: Int, lokasi: String, hari: String, jam: String, petugasId: Int?, onDone: (Boolean) -> Unit) {
+        val conflict = getConflictMessage(lokasi, hari, jam, petugasId, excludeId = id)
+        if (conflict != null) {
+            Toast.makeText(context, conflict, Toast.LENGTH_LONG).show()
+            onDone(false)
+            return
+        }
+
         scope.launch(Dispatchers.IO) {
             try {
                 val conn = MySqlHelper.getConnection()
@@ -194,15 +200,13 @@ fun ManageScheduleScreen() {
                     stmt.setString(3, jam)
                     if (petugasId != null) stmt.setInt(4, petugasId) else stmt.setNull(4, java.sql.Types.INTEGER)
                     stmt.setInt(5, id)
-                    val rows = stmt.executeUpdate()
+                    stmt.executeUpdate()
                     stmt.close(); conn.close()
                     withContext(Dispatchers.Main) {
-                        if (rows > 0) {
-                            Toast.makeText(context, "Jadwal berhasil diperbarui!", Toast.LENGTH_SHORT).show()
-                            onDone(true)
-                        } else onDone(false)
+                        Toast.makeText(context, "Jadwal berhasil diperbarui!", Toast.LENGTH_SHORT).show()
+                        onDone(true)
                     }
-                } else onDone(false)
+                }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -219,15 +223,13 @@ fun ManageScheduleScreen() {
                 if (conn != null) {
                     val stmt = conn.prepareStatement("DELETE FROM schedules WHERE id = ?")
                     stmt.setInt(1, id)
-                    val rows = stmt.executeUpdate()
+                    stmt.executeUpdate()
                     stmt.close(); conn.close()
                     withContext(Dispatchers.Main) {
-                        if (rows > 0) {
-                            Toast.makeText(context, "Jadwal berhasil dihapus!", Toast.LENGTH_SHORT).show()
-                            onDone(true)
-                        } else onDone(false)
+                        Toast.makeText(context, "Jadwal berhasil dihapus!", Toast.LENGTH_SHORT).show()
+                        onDone(true)
                     }
-                } else onDone(false)
+                }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -238,7 +240,6 @@ fun ManageScheduleScreen() {
     }
 
     LaunchedEffect(Unit) {
-        migrateDatabase()
         loadPetugas()
         loadData()
     }
@@ -249,7 +250,6 @@ fun ManageScheduleScreen() {
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFFF5F5F5))) {
-        // ── Header Banner ──
         Box(
             Modifier.fillMaxWidth()
                 .background(Brush.horizontalGradient(listOf(Green700, Green500)))
@@ -266,7 +266,6 @@ fun ManageScheduleScreen() {
             }
         }
 
-        // ── Error Banner ──
         AnimatedVisibility(visible = errorMsg != null, enter = fadeIn(), exit = fadeOut()) {
             errorMsg?.let { msg ->
                 Card(
@@ -287,7 +286,6 @@ fun ManageScheduleScreen() {
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             Spacer(Modifier.height(12.dp))
 
-            // ── Search Bar ──
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -306,7 +304,6 @@ fun ManageScheduleScreen() {
 
             Spacer(Modifier.height(10.dp))
 
-            // ── Filter Chips ──
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(HARI) { hari ->
                     FilterChip(
@@ -324,7 +321,6 @@ fun ManageScheduleScreen() {
 
             Spacer(Modifier.height(12.dp))
 
-            // ── Tombol Tambah ──
             Button(
                 onClick = { showAddDialog = true },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -338,7 +334,6 @@ fun ManageScheduleScreen() {
 
             Spacer(Modifier.height(12.dp))
 
-            // ── Konten ──
             when {
                 isLoading -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -366,7 +361,6 @@ fun ManageScheduleScreen() {
         }
     }
 
-    // ── Dialogs ──
     if (showAddDialog) {
         ScheduleFormDialog(
             title = "Tambah Jadwal",
@@ -528,7 +522,6 @@ private fun ScheduleFormDialog(
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Green700)
                 )
 
-                // ── Tombol Jam ──
                 OutlinedCard(
                     onClick = { showTimePicker = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -545,7 +538,6 @@ private fun ScheduleFormDialog(
                     }
                 }
 
-                // ── Dropdown Hari ──
                 ExposedDropdownMenuBox(
                     expanded = hariExpanded,
                     onExpandedChange = { hariExpanded = it }
@@ -574,7 +566,6 @@ private fun ScheduleFormDialog(
                     }
                 }
 
-                // ── Dropdown Petugas ──
                 ExposedDropdownMenuBox(
                     expanded = petugasExpanded,
                     onExpandedChange = { petugasExpanded = it }
