@@ -1,6 +1,9 @@
 package com.example.sisampah.ui.screens.auth
 
 import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -8,7 +11,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -23,7 +28,6 @@ fun RegisterScreen(
     onRegisterSuccess: () -> Unit,
     onNavigateToLogin: () -> Unit
 ) {
-    // State variables
     var nama by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -32,16 +36,21 @@ fun RegisterScreen(
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { focusManager.clearFocus() }
             .padding(24.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Title
         Text(
             text = "Daftar Akun",
             fontSize = 32.sp,
@@ -55,16 +64,14 @@ fun RegisterScreen(
             modifier = Modifier.padding(bottom = 32.dp)
         )
 
-        // Input fields
-        fun Modifier.standardField() = this.fillMaxWidth().then(Modifier)
-
         OutlinedTextField(
             value = nama,
             onValueChange = { nama = it },
             label = { Text("Nama Lengkap") },
-            modifier = Modifier.standardField(),
+            modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,
-            enabled = !isLoading
+            enabled = !isLoading,
+            singleLine = true
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -73,9 +80,10 @@ fun RegisterScreen(
             value = username,
             onValueChange = { username = it },
             label = { Text("Username") },
-            modifier = Modifier.standardField(),
+            modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,
-            enabled = !isLoading
+            enabled = !isLoading,
+            singleLine = true
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -84,9 +92,10 @@ fun RegisterScreen(
             value = password,
             onValueChange = { password = it },
             label = { Text("Password") },
-            modifier = Modifier.standardField(),
+            modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,
-            enabled = !isLoading
+            enabled = !isLoading,
+            singleLine = true
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -95,20 +104,20 @@ fun RegisterScreen(
             value = confirmPassword,
             onValueChange = { confirmPassword = it },
             label = { Text("Konfirmasi Password") },
-            modifier = Modifier.standardField(),
+            modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,
-            enabled = !isLoading
+            enabled = !isLoading,
+            singleLine = true
         )
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Button & loading
         if (isLoading) {
             CircularProgressIndicator()
         } else {
             Button(
                 onClick = {
-                    // Validation
+                    focusManager.clearFocus()
                     when {
                         nama.isEmpty() || username.isEmpty() || password.isEmpty() || confirmPassword.isEmpty() ->
                             Toast.makeText(context, "Isi semua bidang!", Toast.LENGTH_SHORT).show()
@@ -120,7 +129,6 @@ fun RegisterScreen(
                                 try {
                                     val conn = MySqlHelper.getConnection()
                                     if (conn != null) {
-                                        // Cek username
                                         val checkStmt = conn.prepareStatement("SELECT id FROM users WHERE username = ?")
                                         checkStmt.setString(1, username)
                                         val resultSet = checkStmt.executeQuery()
@@ -130,7 +138,6 @@ fun RegisterScreen(
                                                 Toast.makeText(context, "Username sudah digunakan!", Toast.LENGTH_SHORT).show()
                                             }
                                         } else {
-                                            // Insert user baru dengan nama
                                             val insertStmt = conn.prepareStatement(
                                                 "INSERT INTO users (username, nama, password, role) VALUES (?, ?, ?, ?)"
                                             )
@@ -178,7 +185,10 @@ fun RegisterScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        TextButton(onClick = onNavigateToLogin, enabled = !isLoading) {
+        TextButton(onClick = {
+            focusManager.clearFocus()
+            onNavigateToLogin()
+        }, enabled = !isLoading) {
             Text("Sudah punya akun? Login")
         }
     }

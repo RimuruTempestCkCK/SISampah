@@ -2,6 +2,9 @@ package com.example.sisampah.ui.screens.auth
 
 import android.util.Log
 import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -11,7 +14,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -36,10 +41,16 @@ fun LoginScreen(
     
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { focusManager.clearFocus() }
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -63,7 +74,8 @@ fun LoginScreen(
             label = { Text("Username") },
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,
-            enabled = !isLoading
+            enabled = !isLoading,
+            singleLine = true
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -82,7 +94,8 @@ fun LoginScreen(
             },
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,
-            enabled = !isLoading
+            enabled = !isLoading,
+            singleLine = true
         )
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -92,6 +105,7 @@ fun LoginScreen(
         } else {
             Button(
                 onClick = {
+                    focusManager.clearFocus()
                     if (username.isEmpty() || password.isEmpty()) {
                         Toast.makeText(context, "Isi semua bidang!", Toast.LENGTH_SHORT).show()
                         return@Button
@@ -114,7 +128,7 @@ fun LoginScreen(
                                         val roleStr = roleRaw.trim().uppercase()
                                         Log.d("LoginScreen", "Role found: '$roleStr'")
                                         
-                                        val loggedInUsername = username // Capture current username
+                                        val loggedInUsername = username
                                         withContext(Dispatchers.Main) {
                                             try {
                                                 val role = UserRole.valueOf(roleStr)
@@ -162,7 +176,10 @@ fun LoginScreen(
             }
         }
 
-        TextButton(onClick = onNavigateToRegister, enabled = !isLoading) {
+        TextButton(onClick = {
+            focusManager.clearFocus()
+            onNavigateToRegister()
+        }, enabled = !isLoading) {
             Text("Belum punya akun? Daftar sekarang")
         }
     }

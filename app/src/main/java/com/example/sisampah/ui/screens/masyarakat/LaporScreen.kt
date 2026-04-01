@@ -3,6 +3,7 @@ package com.example.sisampah.ui.screens.masyarakat
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.location.Geocoder
 import android.net.Uri
@@ -17,6 +18,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,6 +45,7 @@ import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.util.*
 
 private val Green700 = Color(0xFF2E7D32)
@@ -58,6 +62,7 @@ fun LaporScreen(currentUsername: String = "Warga") {
     
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     val imageLauncher = rememberLauncherForActivityResult(
@@ -80,40 +85,37 @@ fun LaporScreen(currentUsername: String = "Warga") {
         }
     }
 
-    // ── Migrasi Database ──
-    fun migrateDatabase() {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val conn = MySqlHelper.getConnection()
-                if (conn != null) {
-                    val meta = conn.metaData
-                    val rsImg = meta.getColumns(null, null, "trash_reports", "image")
-                    if (!rsImg.next()) {
-                        conn.createStatement().executeUpdate("ALTER TABLE trash_reports ADD COLUMN image LONGTEXT NULL")
-                    }
-                    rsImg.close()
-                    conn.close()
-                }
-            } catch (e: Exception) { e.printStackTrace() }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        migrateDatabase()
-    }
-
     fun uriToBase64(uri: Uri): String? {
         return try {
             val inputStream = context.contentResolver.openInputStream(uri)
-            val bytes = inputStream?.readBytes()
+            val originalBitmap = BitmapFactory.decodeStream(inputStream)
             inputStream?.close()
-            if (bytes != null) Base64.encodeToString(bytes, Base64.DEFAULT) else null
+
+            if (originalBitmap != null) {
+                val ratio = originalBitmap.width.toFloat() / originalBitmap.height.toFloat()
+                val targetWidth = 800
+                val targetHeight = (targetWidth / ratio).toInt()
+                val resizedBitmap = Bitmap.createScaledBitmap(originalBitmap, targetWidth, targetHeight, true)
+
+                val outputStream = ByteArrayOutputStream()
+                resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 50, outputStream)
+                val bytes = outputStream.toByteArray()
+                Base64.encodeToString(bytes, Base64.DEFAULT)
+            } else null
         } catch (e: Exception) {
             null
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFFF5F5F5))) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF5F5F5))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { focusManager.clearFocus() } // Sembunyikan keyboard saat klik area kosong
+    ) {
         // ── Header Banner ──
         Box(
             Modifier.fillMaxWidth()
@@ -126,7 +128,6 @@ fun LaporScreen(currentUsername: String = "Warga") {
             }
         }
 
-        // ── Error Banner ──
         AnimatedVisibility(visible = errorMsg != null, enter = fadeIn(), exit = fadeOut()) {
             errorMsg?.let { msg ->
                 Card(
@@ -166,7 +167,10 @@ fun LaporScreen(currentUsername: String = "Warga") {
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(Color(0xFFF0F0F0))
                                 .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
-                                .clickable { imageLauncher.launch("image/*") },
+                                .clickable { 
+                                    focusManager.clearFocus()
+                                    imageLauncher.launch("image/*") 
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             if (imageUri == null) {
@@ -201,17 +205,12 @@ fun LaporScreen(currentUsername: String = "Warga") {
                                 leadingIcon = { Icon(Icons.Default.Place, null, tint = Green700) },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(10.dp),
-                                enabled = !isLoading,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Green700,
-                                    unfocusedBorderColor = Color.LightGray,
-                                    focusedContainerColor = Color.White,
-                                    unfocusedContainerColor = Color.White
-                                )
+                                enabled = !isLoading
                             )
                             
                             OutlinedButton(
                                 onClick = {
+                                    focusManager.clearFocus()
                                     val permissions = arrayOf(
                                         Manifest.permission.ACCESS_FINE_LOCATION,
                                         Manifest.permission.ACCESS_COARSE_LOCATION
@@ -242,17 +241,12 @@ fun LaporScreen(currentUsername: String = "Warga") {
                             modifier = Modifier.fillMaxWidth(),
                             minLines = 3,
                             shape = RoundedCornerShape(10.dp),
-                            enabled = !isLoading,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Green700,
-                                unfocusedBorderColor = Color.LightGray,
-                                focusedContainerColor = Color.White,
-                                unfocusedContainerColor = Color.White
-                            )
+                            enabled = !isLoading
                         )
 
                         Button(
                             onClick = {
+                                focusManager.clearFocus()
                                 if (location.isBlank() || description.isBlank() || imageUri == null) {
                                     errorMsg = "Harap lengkapi semua data dan foto!"
                                     return@Button

@@ -7,18 +7,18 @@ import java.sql.Connection
 import java.sql.DriverManager
 
 object MySqlHelper {
-    private const val IP = "10.0.2.2" 
+    private const val IP = "192.168.18.89"
     private const val PORT = "3306"
     private const val DB_NAME = "sisampah_db"
     private const val USER = "root"
     private const val PASS = ""
     
-    // Parameter tambahan untuk menghindari kegagalan handshake
+    // Optimasi URL dengan Timeout agar tidak loading selamanya
     private const val URL = "jdbc:mysql://$IP:$PORT/$DB_NAME?" +
             "useSSL=false&" +
             "autoReconnect=true&" +
-            "failOverReadOnly=false&" +
-            "maxReconnects=10"
+            "connectTimeout=5000&" + // Maksimal 5 detik untuk mencoba konek
+            "socketTimeout=10000"    // Maksimal 10 detik untuk kirim/terima data
 
     suspend fun getConnection(): Connection? = withContext(Dispatchers.IO) {
         try {
@@ -29,7 +29,6 @@ object MySqlHelper {
             conn
         } catch (e: Exception) {
             Log.e("MySQL", "Koneksi Gagal Detail: ${e.message}")
-            e.printStackTrace()
             null
         }
     }
