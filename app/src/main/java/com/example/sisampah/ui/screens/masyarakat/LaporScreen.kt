@@ -11,6 +11,7 @@ import android.util.Base64
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -56,19 +57,34 @@ private val RedAccent = Color(0xFFE53935)
 fun LaporScreen(currentUsername: String = "Warga") {
     var location by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var showDialog by remember { mutableStateOf(false) }
     
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    val imageLauncher = rememberLauncherForActivityResult(
+    // Launcher untuk Galeri
+    val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        imageUri = uri
+        if (uri != null) {
+            val inputStream = context.contentResolver.openInputStream(uri)
+            capturedBitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream?.close()
+        }
+    }
+
+    // Launcher untuk Kamera
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: Bitmap? ->
+        if (bitmap != null) {
+            capturedBitmap = bitmap
+        }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -85,26 +101,45 @@ fun LaporScreen(currentUsername: String = "Warga") {
         }
     }
 
-    fun uriToBase64(uri: Uri): String? {
+    // Fungsi Kompresi dan Base64
+    fun bitmapToBase64(bitmap: Bitmap): String? {
         return try {
-            val inputStream = context.contentResolver.openInputStream(uri)
-            val originalBitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream?.close()
+            val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+            val targetWidth = 800
+            val targetHeight = (targetWidth / ratio).toInt()
+            val resizedBitmap = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
 
-            if (originalBitmap != null) {
-                val ratio = originalBitmap.width.toFloat() / originalBitmap.height.toFloat()
-                val targetWidth = 800
-                val targetHeight = (targetWidth / ratio).toInt()
-                val resizedBitmap = Bitmap.createScaledBitmap(originalBitmap, targetWidth, targetHeight, true)
-
-                val outputStream = ByteArrayOutputStream()
-                resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 50, outputStream)
-                val bytes = outputStream.toByteArray()
-                Base64.encodeToString(bytes, Base64.DEFAULT)
-            } else null
+            val outputStream = ByteArrayOutputStream()
+            resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 50, outputStream)
+            val bytes = outputStream.toByteArray()
+            Base64.encodeToString(bytes, Base64.DEFAULT)
         } catch (e: Exception) {
             null
         }
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Pilih Sumber Gambar") },
+            text = { Text("Ambil foto dari kamera atau pilih dari galeri?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDialog = false
+                    cameraLauncher.launch()
+                }) {
+                    Text("Kamera", color = Green700)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDialog = false
+                    galleryLauncher.launch("image/*")
+                }) {
+                    Text("Galeri", color = Green700)
+                }
+            }
+        )
     }
 
     Column(
@@ -114,9 +149,8 @@ fun LaporScreen(currentUsername: String = "Warga") {
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
-            ) { focusManager.clearFocus() } // Sembunyikan keyboard saat klik area kosong
+            ) { focusManager.clearFocus() }
     ) {
-        // ── Header Banner ──
         Box(
             Modifier.fillMaxWidth()
                 .background(Brush.horizontalGradient(listOf(Green700, Green500)))
@@ -169,31 +203,23 @@ fun LaporScreen(currentUsername: String = "Warga") {
                                 .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
                                 .clickable { 
                                     focusManager.clearFocus()
-                                    imageLauncher.launch("image/*") 
+                                    showDialog = true 
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            if (imageUri == null) {
+                            if (capturedBitmap == null) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Icon(Icons.Default.AddPhotoAlternate, null, tint = Color.Gray, modifier = Modifier.size(48.dp))
                                     Spacer(Modifier.height(8.dp))
-                                    Text("Pilih Foto Sampah", color = Color.Gray, fontSize = 13.sp)
+                                    Text("Klik untuk Ambil Foto / Galeri", color = Color.Gray, fontSize = 13.sp)
                                 }
                             } else {
-                                val bitmap = remember(imageUri) {
-                                    try {
-                                        val inputStream = context.contentResolver.openInputStream(imageUri!!)
-                                        BitmapFactory.decodeStream(inputStream)?.asImageBitmap()
-                                    } catch (e: Exception) { null }
-                                }
-                                if (bitmap != null) {
-                                    Image(
-                                        bitmap = bitmap,
-                                        contentDescription = "Preview",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                }
+                                Image(
+                                    bitmap = capturedBitmap!!.asImageBitmap(),
+                                    contentDescription = "Preview",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
                             }
                         }
 
@@ -247,7 +273,7 @@ fun LaporScreen(currentUsername: String = "Warga") {
                         Button(
                             onClick = {
                                 focusManager.clearFocus()
-                                if (location.isBlank() || description.isBlank() || imageUri == null) {
+                                if (location.isBlank() || description.isBlank() || capturedBitmap == null) {
                                     errorMsg = "Harap lengkapi semua data dan foto!"
                                     return@Button
                                 }
@@ -256,7 +282,7 @@ fun LaporScreen(currentUsername: String = "Warga") {
                                     try {
                                         val conn = MySqlHelper.getConnection()
                                         if (conn != null) {
-                                            val imageBase64 = uriToBase64(imageUri!!)
+                                            val imageBase64 = bitmapToBase64(capturedBitmap!!)
                                             val query = "INSERT INTO trash_reports (reporterName, location, description, status, image, timestamp) VALUES (?, ?, ?, ?, ?, NOW())"
                                             val stmt = conn.prepareStatement(query)
                                             stmt.setString(1, currentUsername)
@@ -267,7 +293,7 @@ fun LaporScreen(currentUsername: String = "Warga") {
                                             stmt.executeUpdate()
                                             withContext(Dispatchers.Main) {
                                                 Toast.makeText(context, "Laporan Terkirim!", Toast.LENGTH_SHORT).show()
-                                                location = ""; description = ""; imageUri = null; errorMsg = null
+                                                location = ""; description = ""; capturedBitmap = null; errorMsg = null
                                             }
                                             conn.close()
                                         }
