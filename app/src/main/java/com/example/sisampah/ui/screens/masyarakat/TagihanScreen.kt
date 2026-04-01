@@ -64,14 +64,36 @@ fun TagihanScreen() {
     
     var selectedTagihanId by remember { mutableIntStateOf(-1) }
 
+    val bulanList = listOf(
+        "Januari 2026", "Februari 2026", "Maret 2026", "April 2026", 
+        "Mei 2026", "Juni 2026", "Juli 2026", "Agustus 2026", 
+        "September 2026", "Oktober 2026", "November 2026", "Desember 2026"
+    )
+
     fun loadData() {
         isLoading = true
         scope.launch(Dispatchers.IO) {
             try {
                 val conn = MySqlHelper.getConnection()
-                val list = mutableListOf<Tagihan>()
                 if (conn != null) {
-                    val rs = conn.createStatement().executeQuery("SELECT * FROM payments ORDER BY id DESC")
+                    // Pastikan semua bulan ada di database
+                    val stmt = conn.createStatement()
+                    bulanList.forEach { bulan ->
+                        val checkRs = stmt.executeQuery("SELECT id FROM payments WHERE bulan = '$bulan'")
+                        if (!checkRs.next()) {
+                            // Jika bulan belum ada, masukkan data baru dengan status BELUM BAYAR
+                            val insertStmt = conn.prepareStatement("INSERT INTO payments (bulan, jumlah, status) VALUES (?, ?, ?)")
+                            insertStmt.setString(1, bulan)
+                            insertStmt.setDouble(2, 25000.0)
+                            insertStmt.setString(3, "BELUM BAYAR")
+                            insertStmt.executeUpdate()
+                        }
+                        checkRs.close()
+                    }
+
+                    // Ambil semua data tagihan 2026
+                    val rs = stmt.executeQuery("SELECT * FROM payments WHERE bulan LIKE '%2026' ORDER BY FIELD(bulan, 'Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026', 'Juli 2026', 'Agustus 2026', 'September 2026', 'Oktober 2026', 'November 2026', 'Desember 2026')")
+                    val list = mutableListOf<Tagihan>()
                     while (rs.next()) {
                         list.add(Tagihan(
                             rs.getInt("id"),
@@ -81,7 +103,9 @@ fun TagihanScreen() {
                             rs.getString("image_bukti")
                         ))
                     }
-                    rs.close(); conn.close()
+                    rs.close()
+                    stmt.close()
+                    conn.close()
                     withContext(Dispatchers.Main) { 
                         tagihanList = list
                         isLoading = false 
@@ -179,7 +203,7 @@ fun TagihanScreen() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Tagihan Pengangkutan", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    Text("Pilih tagihan untuk upload bukti pembayaran", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+                    Text("Daftar tagihan iuran Januari - Desember 2026", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                 }
                 IconButton(onClick = { 
                     focusManager.clearFocus()
