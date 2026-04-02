@@ -72,9 +72,13 @@ fun LaporScreen(currentUsername: String = "Warga") {
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            val inputStream = context.contentResolver.openInputStream(uri)
-            capturedBitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream?.close()
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                capturedBitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Gagal memuat gambar dari galeri", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -84,6 +88,20 @@ fun LaporScreen(currentUsername: String = "Warga") {
     ) { bitmap: Bitmap? ->
         if (bitmap != null) {
             capturedBitmap = bitmap
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            try {
+                cameraLauncher.launch()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Gagal membuka kamera: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "Izin kamera diperlukan untuk mengambil foto", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -106,7 +124,7 @@ fun LaporScreen(currentUsername: String = "Warga") {
         return try {
             val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
             val targetWidth = 800
-            val targetHeight = (targetWidth / ratio).toInt()
+            val targetHeight = (targetWidth / ratio).toInt().coerceAtLeast(1)
             val resizedBitmap = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
 
             val outputStream = ByteArrayOutputStream()
@@ -126,7 +144,16 @@ fun LaporScreen(currentUsername: String = "Warga") {
             confirmButton = {
                 TextButton(onClick = {
                     showDialog = false
-                    cameraLauncher.launch()
+                    val permissionCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                    if (permissionCheck == PackageManager.PERMISSION_GRANTED) {
+                        try {
+                            cameraLauncher.launch()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Gagal membuka kamera", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
                 }) {
                     Text("Kamera", color = Green700)
                 }
