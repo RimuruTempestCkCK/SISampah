@@ -21,10 +21,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.sisampah.data.MySqlHelper
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 // ─── Warna tema ────────────────────────────────────────────────────────────────
 private val GreenPrimary   = Color(0xFF2E7D32)
@@ -98,7 +94,7 @@ fun MasyarakatDashboard(username: String, onLogout: () -> Unit) {
                 0 -> HomeTab(username)
                 1 -> LaporScreen(username)
                 2 -> StatusScreen()
-                3 -> TagihanScreen()
+                3 -> TagihanScreen(username)
             }
         }
     }

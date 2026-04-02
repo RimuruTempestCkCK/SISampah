@@ -37,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.util.Locale
 
 private val Green700 = Color(0xFF2E7D32)
 private val Green500 = Color(0xFF4CAF50)
@@ -50,11 +51,12 @@ data class Tagihan(
     val bulan: String,
     val jumlah: Double,
     val status: String,
-    val imageBukti: String? = null
+    val imageBukti: String? = null,
+    val vaNumber: String = ""
 )
 
 @Composable
-fun TagihanScreen() {
+fun TagihanScreen(username: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
@@ -76,23 +78,53 @@ fun TagihanScreen() {
             try {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
-                    // Pastikan semua bulan ada di database
-                    val stmt = conn.createStatement()
-                    bulanList.forEach { bulan ->
-                        val checkRs = stmt.executeQuery("SELECT id FROM payments WHERE bulan = '$bulan'")
-                        if (!checkRs.next()) {
-                            // Jika bulan belum ada, masukkan data baru dengan status BELUM BAYAR
-                            val insertStmt = conn.prepareStatement("INSERT INTO payments (bulan, jumlah, status) VALUES (?, ?, ?)")
-                            insertStmt.setString(1, bulan)
-                            insertStmt.setDouble(2, 25000.0)
-                            insertStmt.setString(3, "BELUM BAYAR")
-                            insertStmt.executeUpdate()
+                    // 1. Get User ID for VA
+                    var userId: Int? = null
+                    val userStmt = conn.prepareStatement("SELECT id FROM users WHERE username = ?")
+                    userStmt.setString(1, username)
+                    val userRs = userStmt.executeQuery()
+                    if (userRs.next()) {
+                        userId = userRs.getInt("id")
+                    }
+                    userRs.close()
+                    userStmt.close()
+
+                    if (userId == null) {
+                        withContext(Dispatchers.Main) { 
+                            errorMsg = "User tidak ditemukan"
+                            isLoading = false 
                         }
-                        checkRs.close()
+                        conn.close()
+                        return@launch
                     }
 
-                    // Ambil semua data tagihan 2026
-                    val rs = stmt.executeQuery("SELECT * FROM payments WHERE bulan LIKE '%2026' ORDER BY FIELD(bulan, 'Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026', 'Juli 2026', 'Agustus 2026', 'September 2026', 'Oktober 2026', 'November 2026', 'Desember 2026')")
+                    val currentVa = "8888${String.format(Locale.US, "%04d", userId)}"
+
+                    // 2. Ensure all months exist for this user
+                    val stmt = conn.createStatement()
+                    bulanList.forEach { bulan ->
+                        val checkStmt = conn.prepareStatement("SELECT id FROM payments WHERE bulan = ? AND username = ?")
+                        checkStmt.setString(1, bulan)
+                        checkStmt.setString(2, username)
+                        val checkRs = checkStmt.executeQuery()
+                        if (!checkRs.next()) {
+                            val insertStmt = conn.prepareStatement("INSERT INTO payments (username, bulan, jumlah, status) VALUES (?, ?, ?, ?)")
+                            insertStmt.setString(1, username)
+                            insertStmt.setString(2, bulan)
+                            insertStmt.setDouble(3, 25000.0)
+                            insertStmt.setString(4, "BELUM BAYAR")
+                            insertStmt.executeUpdate()
+                            insertStmt.close()
+                        }
+                        checkRs.close()
+                        checkStmt.close()
+                    }
+
+                    // 3. Fetch data
+                    val query = "SELECT * FROM payments WHERE username = ? AND bulan LIKE '%2026' ORDER BY FIELD(bulan, 'Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026', 'Juli 2026', 'Agustus 2026', 'September 2026', 'Oktober 2026', 'November 2026', 'Desember 2026')"
+                    val fetchStmt = conn.prepareStatement(query)
+                    fetchStmt.setString(1, username)
+                    val rs = fetchStmt.executeQuery()
                     val list = mutableListOf<Tagihan>()
                     while (rs.next()) {
                         list.add(Tagihan(
@@ -100,11 +132,12 @@ fun TagihanScreen() {
                             rs.getString("bulan"),
                             rs.getDouble("jumlah"),
                             rs.getString("status"),
-                            rs.getString("image_bukti")
+                            rs.getString("image_bukti"),
+                            currentVa
                         ))
                     }
                     rs.close()
-                    stmt.close()
+                    fetchStmt.close()
                     conn.close()
                     withContext(Dispatchers.Main) { 
                         tagihanList = list
@@ -183,7 +216,22 @@ fun TagihanScreen() {
     }
 
     LaunchedEffect(Unit) {
-        loadData()
+        // Migration: ensure 'username' column exists in payments
+        scope.launch(Dispatchers.IO) {
+            try {
+                val conn = MySqlHelper.getConnection()
+                if (conn != null) {
+                    val meta = conn.metaData
+                    val rs = meta.getColumns(null, null, "payments", "username")
+                    if (!rs.next()) {
+                        conn.createStatement().executeUpdate("ALTER TABLE payments ADD COLUMN username VARCHAR(50) AFTER id")
+                    }
+                    rs.close()
+                    conn.close()
+                }
+            } catch (e: Exception) {}
+            loadData()
+        }
     }
 
     Column(
@@ -328,6 +376,14 @@ fun TagihanItem(tagihan: Tagihan, onUploadBukti: () -> Unit) {
             
             Divider(Modifier.padding(vertical = 16.dp), thickness = 0.5.dp, color = Color.LightGray)
             
+            if (isBelumBayar) {
+                Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                    Text("No. Virtual Account (VA):", fontSize = 12.sp, color = Color.Gray)
+                    Text(tagihan.vaNumber, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
+                    Text("Bank Transfer (Mandiri/BCA)", fontSize = 11.sp, color = Color.Gray)
+                }
+            }
+
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = when {
@@ -352,14 +408,18 @@ fun TagihanItem(tagihan: Tagihan, onUploadBukti: () -> Unit) {
 
                 if (isBelumBayar) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Klik untuk Bayar", fontSize = 11.sp, color = Green700, fontWeight = FontWeight.Bold)
+                        Text("Klik untuk Upload Bukti", fontSize = 11.sp, color = Green700, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(4.dp))
                         Icon(Icons.Default.CloudUpload, null, tint = Green700, modifier = Modifier.size(16.dp))
                     }
                 } else if (isWaiting) {
-                    Text("Menunggu Konfirmasi", fontSize = 11.sp, color = Blue700, fontWeight = FontWeight.Medium)
+                    Text("Menunggu Konfirmasi Admin", fontSize = 11.sp, color = Blue700, fontWeight = FontWeight.Medium)
                 } else if (isLunas) {
-                    Text("Selesai", fontSize = 11.sp, color = Green700, fontWeight = FontWeight.Medium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Check, null, tint = Green700, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Tervalidasi", fontSize = 11.sp, color = Green700, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
