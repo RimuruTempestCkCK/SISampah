@@ -7,7 +7,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -83,7 +82,8 @@ fun AdminDashboard(onLogout: () -> Unit) {
                     Triple("Beranda",  Icons.Default.Dashboard,     0),
                     Triple("User",     Icons.Default.People,        1),
                     Triple("Jadwal",  Icons.Default.CalendarToday,    2),
-                    Triple("Petugas", Icons.Default.Engineering, 3)
+                    Triple("Petugas", Icons.Default.Engineering, 3),
+                    Triple("Bayar",   Icons.Default.Payments, 4)
                 )
                 tabs.forEach { (label, icon, idx) ->
                     NavigationBarItem(
@@ -107,6 +107,7 @@ fun AdminDashboard(onLogout: () -> Unit) {
                 1 -> ManageUserScreen()
                 2 -> ManageScheduleScreen()
                 3 -> PetugasScreen()
+                4 -> PaymentValidationScreen()
             }
         }
     }
