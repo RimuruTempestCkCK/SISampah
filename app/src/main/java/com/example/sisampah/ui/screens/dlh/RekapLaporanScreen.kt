@@ -1,5 +1,10 @@
 package com.example.sisampah.ui.screens.dlh
 
+import android.content.Context
+import android.print.PrintAttributes
+import android.print.PrintManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -27,6 +32,8 @@ import com.example.sisampah.ui.screens.admin.StatCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.*
 
 private val Green700 = Color(0xFF2E7D32)
 private val Green500 = Color(0xFF4CAF50)
@@ -47,13 +54,22 @@ fun RekapLaporanScreen() {
     var pendingCount by remember { mutableStateOf(0) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
-    fun loadData() {
+    // State untuk filter tanggal
+    var selectedDate by remember { mutableStateOf("") }
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    fun loadData(dateFilter: String = "") {
         isLoading = true
         scope.launch(Dispatchers.IO) {
             try {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
-                    val query = "SELECT * FROM trash_reports ORDER BY id DESC"
+                    var query = "SELECT * FROM trash_reports"
+                    if (dateFilter.isNotEmpty()) {
+                        query += " WHERE timestamp LIKE '$dateFilter%'"
+                    }
+                    query += " ORDER BY id DESC"
+                    
                     val rs = conn.createStatement().executeQuery(query)
                     val list = mutableListOf<TrashReport>()
                     var finished = 0
@@ -97,6 +113,32 @@ fun RekapLaporanScreen() {
         loadData()
     }
 
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState()
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                        selectedDate = sdf.format(Date(millis))
+                        loadData(selectedDate)
+                    }
+                    showDatePicker = false
+                }) { Text("Pilih") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    selectedDate = ""
+                    loadData()
+                    showDatePicker = false
+                }) { Text("Reset") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
     Column(Modifier.fillMaxSize().background(Color(0xFFF5F5F5))) {
         Box(
             Modifier.fillMaxWidth()
@@ -108,8 +150,22 @@ fun RekapLaporanScreen() {
                     Text("Rekap Laporan Masyarakat", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                     Text("Pantau data pelaporan sampah secara real-time", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                 }
-                IconButton(onClick = { loadData() }) {
-                    Icon(Icons.Default.Refresh, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                Row {
+                    IconButton(onClick = { showDatePicker = true }) {
+                        Icon(Icons.Default.DateRange, null, tint = Color.White)
+                    }
+                    IconButton(onClick = { 
+                        if (reports.isNotEmpty()) {
+                            printLaporan(context, reports, selectedDate)
+                        } else {
+                            Toast.makeText(context, "Tidak ada data untuk dicetak", Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        Icon(Icons.Default.Print, null, tint = Color.White)
+                    }
+                    IconButton(onClick = { loadData(selectedDate) }) {
+                        Icon(Icons.Default.Refresh, null, tint = Color.White)
+                    }
                 }
             }
         }
@@ -139,6 +195,25 @@ fun RekapLaporanScreen() {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                if (selectedDate.isNotEmpty()) {
+                    item {
+                        Surface(
+                            color = Green700.copy(0.1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.FilterList, null, tint = Green700, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Filter: $selectedDate", color = Green700, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Spacer(Modifier.weight(1f))
+                                IconButton(onClick = { selectedDate = ""; loadData() }, modifier = Modifier.size(20.dp)) {
+                                    Icon(Icons.Default.Close, null, tint = Green700)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         StatCard(Modifier.weight(1f), "Total", totalCount.toString(), Icons.Default.Assessment, BlueStat)
@@ -194,4 +269,50 @@ fun RekapLaporanScreen() {
             }
         }
     }
+}
+
+fun printLaporan(context: Context, reports: List<TrashReport>, dateFilter: String) {
+    val webView = WebView(context)
+    webView.webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String) {
+            val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+            val jobName = "Laporan_Sampah_${if(dateFilter.isEmpty()) "Semua" else dateFilter}"
+            val printAdapter = webView.createPrintDocumentAdapter(jobName)
+            printManager.print(jobName, printAdapter, PrintAttributes.Builder().build())
+        }
+    }
+
+    val html = StringBuilder()
+    html.append("<html><head><style>")
+    html.append("table { width: 100%; border-collapse: collapse; margin-top: 20px; }")
+    html.append("th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }")
+    html.append("th { background-color: #2E7D32; color: white; }")
+    html.append("h2 { color: #2E7D32; text-align: center; }")
+    html.append(".header { text-align: center; margin-bottom: 30px; }")
+    html.append("</style></head><body>")
+    
+    html.append("<div class='header'>")
+    html.append("<h2>LAPORAN PENGANGKUTAN SAMPAH</h2>")
+    html.append("<p>Dinas Lingkungan Hidup - Lapor Sampah</p>")
+    if (dateFilter.isNotEmpty()) html.append("<p>Tanggal: $dateFilter</p>")
+    html.append("</div>")
+
+    html.append("<table>")
+    html.append("<tr><th>ID</th><th>Pelapor</th><th>Lokasi</th><th>Status</th><th>Tanggal</th></tr>")
+    
+    for (r in reports) {
+        html.append("<tr>")
+        html.append("<td>${r.id}</td>")
+        html.append("<td>${r.reporterName}</td>")
+        html.append("<td>${r.location}</td>")
+        html.append("<td>${r.status}</td>")
+        html.append("<td>${r.timestamp.take(10)}</td>")
+        html.append("</tr>")
+    }
+    
+    html.append("</table>")
+    html.append("<p style='margin-top: 30px;'>Dicetak pada: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())}</p>")
+    html.append("</body></html>")
+
+    webView.loadDataWithBaseURL(null, html.toString(), "text/html", "UTF-8", null)
 }
