@@ -1,14 +1,12 @@
 package com.example.sisampah.ui.screens.petugas_dokumentasi
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.util.Base64
-import android.widget.Toast
-import androidx.compose.foundation.Image
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -19,221 +17,172 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.sisampah.data.MySqlHelper
-import com.example.sisampah.model.TrashReport
+import com.example.sisampah.ui.screens.admin.StatCard
+import com.example.sisampah.ui.screens.admin.SectionCard
+import com.example.sisampah.ui.screens.admin.ActivityRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Green700 = Color(0xFF2E7D32)
-private val Green500 = Color(0xFF4CAF50)
-private val RedAccent = Color(0xFFE53935)
-private val Blue700 = Color(0xFF1565C0)
+private val GreenPrimary   = Color(0xFF2E7D32)
+private val GreenLight     = Color(0xFF4CAF50)
+private val GreenSurface   = Color(0xFFE8F5E9)
+private val RedAccent      = Color(0xFFE53935)
+private val AmberAccent    = Color(0xFFFFC107)
+private val BlueStat       = Color(0xFF1565C0)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PetugasDokumentasiDashboard(username: String, onLogout: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var reports by remember { mutableStateOf<List<TrashReport>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var showDetailDialog by remember { mutableStateOf<TrashReport?>(null) }
-
-    fun loadData() {
-        isLoading = true
-        scope.launch(Dispatchers.IO) {
-            try {
-                val conn = MySqlHelper.getConnection()
-                if (conn != null) {
-                    val query = "SELECT * FROM trash_reports ORDER BY id DESC"
-                    val rs = conn.createStatement().executeQuery(query)
-                    val list = mutableListOf<TrashReport>()
-                    while (rs.next()) {
-                        list.add(TrashReport(
-                            id = rs.getInt("id").toString(),
-                            reporterName = rs.getString("reporterName") ?: "Unknown",
-                            location = rs.getString("location") ?: "",
-                            description = rs.getString("description") ?: "",
-                            status = rs.getString("status") ?: "Menunggu",
-                            timestamp = rs.getString("timestamp") ?: "",
-                            image = rs.getString("image")
-                        ))
-                    }
-                    withContext(Dispatchers.Main) {
-                        reports = list
-                        isLoading = false
-                    }
-                    conn.close()
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    isLoading = false
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    fun updateStatus(id: String, newStatus: String) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val conn = MySqlHelper.getConnection()
-                if (conn != null) {
-                    val stmt = conn.prepareStatement("UPDATE trash_reports SET status = ? WHERE id = ?")
-                    stmt.setString(1, newStatus)
-                    stmt.setInt(2, id.toInt())
-                    stmt.executeUpdate()
-                    conn.close()
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Status diperbarui", Toast.LENGTH_SHORT).show()
-                        loadData()
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Gagal update: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        loadData()
-    }
-
-    if (showDetailDialog != null) {
-        val report = showDetailDialog!!
-        AlertDialog(
-            onDismissRequest = { showDetailDialog = null },
-            title = { Text("Detail Laporan Dokumentasi") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Pelapor: ${report.reporterName}", fontWeight = FontWeight.Bold)
-                    Text("Lokasi: ${report.location}")
-                    Text("Keterangan: ${report.description}")
-                    Text("Status: ${report.status}")
-                    
-                    report.image?.let { base64 ->
-                        val bitmap = remember(base64) {
-                            try {
-                                val bytes = Base64.decode(base64, Base64.DEFAULT)
-                                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                            } catch (e: Exception) { null }
-                        }
-                        if (bitmap != null) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "Foto Sampah",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(250.dp)
-                                    .clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                if (report.status == "Menunggu") {
-                    Button(onClick = {
-                        updateStatus(report.id, "Selesai")
-                        showDetailDialog = null
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Green700)) {
-                        Text("Tandai Selesai")
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDetailDialog = null }) {
-                    Text("Tutup")
-                }
-            }
-        )
-    }
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
+        containerColor = Color(0xFFF5F5F5),
         topBar = {
-            Column {
-                Box(
-                    Modifier.fillMaxWidth()
-                        .background(Brush.horizontalGradient(listOf(Blue700, Color(0xFF1976D2))))
-                        .padding(horizontal = 20.dp, vertical = 22.dp)
-                ) {
+            TopAppBar(
+                title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Petugas Dokumentasi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            Text("Halo, $username", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(GreenPrimary),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.PhotoCamera, null, tint = Color.White, modifier = Modifier.size(20.dp))
                         }
-                        IconButton(onClick = onLogout) {
-                            Icon(Icons.Default.Logout, null, tint = Color.White)
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("Lapor-Sampah", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text("Petugas Dokumentasi", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
+                },
+                actions = {
+                    IconButton(onClick = onLogout) {
+                        Icon(Icons.Default.ExitToApp, contentDescription = "Logout", tint = RedAccent)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+            )
+        },
+        bottomBar = {
+            NavigationBar(containerColor = Color.White) {
+                val tabs = listOf(
+                    Triple("Beranda", Icons.Default.Dashboard, 0),
+                    Triple("Jadwal",  Icons.Default.CalendarToday, 1),
+                    Triple("Update",  Icons.Default.CloudUpload, 2)
+                )
+                tabs.forEach { (label, icon, idx) ->
+                    NavigationBarItem(
+                        selected = selectedTab == idx,
+                        onClick = { selectedTab = idx },
+                        icon = { Icon(icon, null) },
+                        label = { Text(label, fontSize = 11.sp) },
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = GreenSurface,
+                            selectedIconColor = GreenPrimary,
+                            selectedTextColor = GreenPrimary,
+                        )
+                    )
                 }
             }
         }
     ) { innerPadding ->
-        Column(Modifier.padding(innerPadding).fillMaxSize().background(Color(0xFFF5F5F5))) {
-            Row(
-                Modifier.fillMaxWidth().padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Daftar Laporan Masyarakat", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                IconButton(onClick = { loadData() }) {
-                    Icon(Icons.Default.Refresh, null, tint = Blue700)
-                }
+        Box(modifier = Modifier.padding(innerPadding)) {
+            when (selectedTab) {
+                0 -> PetugasHomeTab(username)
+                1 -> PetugasJadwalScreen(username)
+                2 -> PetugasUpdateLaporan()
             }
+        }
+    }
+}
 
-            if (isLoading) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Blue700)
+@Composable
+fun PetugasHomeTab(username: String) {
+    var visible by remember { mutableStateOf(false) }
+    var totalLaporan by remember { mutableStateOf("0") }
+    var laporanSelesai by remember { mutableStateOf("0") }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        visible = true
+        scope.launch(Dispatchers.IO) {
+            try {
+                val conn = MySqlHelper.getConnection()
+                if (conn != null) {
+                    val stmtTotal = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports")
+                    val rsTotal = stmtTotal.executeQuery()
+                    if (rsTotal.next()) {
+                        val count = rsTotal.getInt(1).toString()
+                        withContext(Dispatchers.Main) { totalLaporan = count }
+                    }
+                    rsTotal.close()
+                    stmtTotal.close()
+
+                    val stmtSelesai = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports WHERE status = 'Selesai'")
+                    val rsSelesai = stmtSelesai.executeQuery()
+                    if (rsSelesai.next()) {
+                        val count = rsSelesai.getInt(1).toString()
+                        withContext(Dispatchers.Main) { laporanSelesai = count }
+                    }
+                    rsSelesai.close()
+                    stmtSelesai.close()
+
+                    conn.close()
                 }
-            } else if (reports.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Tidak ada laporan", color = Color.Gray)
-                }
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            AnimatedVisibility(visible, enter = fadeIn() + slideInVertically { -40 }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Brush.horizontalGradient(listOf(GreenPrimary, GreenLight)))
+                        .padding(20.dp)
                 ) {
-                    items(reports) { report ->
-                        Card(
-                            onClick = { showDetailDialog = report },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            elevation = CardDefaults.cardElevation(2.dp)
-                        ) {
-                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(report.reporterName, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                    Text(report.location, fontSize = 13.sp, color = Color.Gray, maxLines = 1)
-                                    Spacer(Modifier.height(4.dp))
-                                    Surface(
-                                        color = if (report.status == "Selesai") Green700.copy(0.1f) else RedAccent.copy(0.1f),
-                                        shape = RoundedCornerShape(4.dp)
-                                    ) {
-                                        Text(
-                                            report.status,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                            fontSize = 10.sp,
-                                            color = if (report.status == "Selesai") Green700 else RedAccent,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                                Icon(Icons.Default.ChevronRight, null, tint = Color.LightGray)
-                            }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Halo,", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+                            Text(username, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text("Petugas Dokumentasi LPS", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
                         }
+                        Icon(Icons.Default.CameraAlt, null, tint = Color.White.copy(0.3f), modifier = Modifier.size(56.dp))
                     }
                 }
+            }
+        }
+
+        item {
+            Text("Ringkasan Tugas", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                StatCard(Modifier.weight(1f), "Total Laporan", totalLaporan, Icons.Default.Assessment, BlueStat)
+                StatCard(Modifier.weight(1f), "Selesai", laporanSelesai, Icons.Default.CheckCircle, GreenPrimary)
+            }
+        }
+
+        item {
+            SectionCard(title = "Tugas Dokumentasi") {
+                ActivityRow(Icons.Default.AddAPhoto, "Ambil foto bukti angkutan", "Wajib", GreenPrimary)
+                ActivityRow(Icons.Default.CloudUpload, "Upload laporan ke sistem", "Realtime", AmberAccent)
+                ActivityRow(Icons.Default.TaskAlt, "Pastikan status terupdate", "Harian", GreenPrimary)
             }
         }
     }

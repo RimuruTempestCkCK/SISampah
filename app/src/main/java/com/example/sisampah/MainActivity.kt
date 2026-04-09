@@ -15,6 +15,7 @@ import com.example.sisampah.ui.screens.auth.RegisterScreen
 import com.example.sisampah.ui.screens.dlh.DLHDashboard
 import com.example.sisampah.ui.screens.masyarakat.MasyarakatDashboard
 import com.example.sisampah.ui.screens.petugas.PetugasDashboard
+import com.example.sisampah.ui.screens.petugas_dokumentasi.PetugasDokumentasiDashboard
 import com.example.sisampah.ui.theme.SISampahTheme
 
 class MainActivity : ComponentActivity() {
@@ -44,6 +45,7 @@ fun AppNavigation() {
                         UserRole.PETUGAS_LPS -> "petugas_dashboard"
                         UserRole.ADMIN -> "admin_dashboard"
                         UserRole.DLH -> "dlh_dashboard"
+                        UserRole.PETUGAS_DOKUMENTASI_LPS -> "petugas_dokumentasi_dashboard"
                     }
                     navController.navigate(destination) {
                         popUpTo("login") { inclusive = true }
@@ -78,11 +80,14 @@ fun AppNavigation() {
         }
 
         composable("petugas_dashboard") {
-            PetugasDashboard(onLogout = {
-                navController.navigate("login") {
-                    popUpTo("petugas_dashboard") { inclusive = true }
+            PetugasDashboard(
+                username = loggedInUsername,
+                onLogout = {
+                    navController.navigate("login") {
+                        popUpTo("petugas_dashboard") { inclusive = true }
+                    }
                 }
-            })
+            )
         }
 
         composable("admin_dashboard") {
@@ -99,6 +104,17 @@ fun AppNavigation() {
                     popUpTo("dlh_dashboard") { inclusive = true }
                 }
             })
+        }
+
+        composable("petugas_dokumentasi_dashboard") {
+            PetugasDokumentasiDashboard(
+                username = loggedInUsername,
+                onLogout = {
+                    navController.navigate("login") {
+                        popUpTo("petugas_dokumentasi_dashboard") { inclusive = true }
+                    }
+                }
+            )
         }
     }
 }

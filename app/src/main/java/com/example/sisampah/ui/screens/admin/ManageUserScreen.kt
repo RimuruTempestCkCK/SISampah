@@ -39,6 +39,7 @@ private val RedAccent   = Color(0xFFE53935)
 private val Blue700     = Color(0xFF1565C0)
 private val Purple700   = Color(0xFF6A1B9A)
 private val Amber500    = Color(0xFFFFC107)
+private val Cyan700     = Color(0xFF0097A7)
 
 // ─── Model ─────────────────────────────────────────────────────────────────────
 data class User(
@@ -53,6 +54,7 @@ data class User(
 private val ROLES = listOf(
     UserRole.MASYARAKAT.name,
     UserRole.PETUGAS_LPS.name,
+    UserRole.PETUGAS_DOKUMENTASI_LPS.name,
     UserRole.ADMIN.name,
     UserRole.DLH.name
 )
@@ -77,20 +79,26 @@ fun ManageUserScreen() {
     var userToDelete     by remember { mutableStateOf<User?>(null) }
     var errorMsg         by remember { mutableStateOf<String?>(null) }
 
-    // ── Fungsi: Migrasi database (tambah kolom nama jika belum ada) ──
+    // ── Fungsi: Migrasi database (tambah kolom nama jika belum ada dan perbesar role) ──
     fun migrateDatabase() {
         scope.launch(Dispatchers.IO) {
             try {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
+                    val stmt = conn.createStatement()
+                    
+                    // 1. Tambah kolom nama jika belum ada
                     val meta = conn.metaData
                     val rs = meta.getColumns(null, null, "users", "nama")
                     if (!rs.next()) {
-                        val stmt = conn.createStatement()
                         stmt.executeUpdate("ALTER TABLE users ADD COLUMN nama VARCHAR(100) DEFAULT '' AFTER username")
-                        stmt.close()
                     }
                     rs.close()
+                    
+                    // 2. Perbesar ukuran kolom role agar muat PETUGAS_DOKUMENTASI_LPS (23 karakter)
+                    stmt.executeUpdate("ALTER TABLE users MODIFY COLUMN role VARCHAR(50)")
+                    
+                    stmt.close()
                     conn.close()
                 }
             } catch (e: Exception) {
@@ -649,6 +657,7 @@ private fun UserFormDialog(
 fun roleLabel(role: String): String = when (role.uppercase()) {
     "ADMIN"       -> "Admin"
     "PETUGAS_LPS" -> "Petugas"
+    "PETUGAS_DOKUMENTASI_LPS" -> "Dokumentasi"
     "MASYARAKAT"  -> "Masyarakat"
     "DLH"         -> "DLH"
     "SEMUA"       -> "Semua"
@@ -658,6 +667,7 @@ fun roleLabel(role: String): String = when (role.uppercase()) {
 fun roleColor(role: String): Color = when (role.uppercase()) {
     "ADMIN"       -> Purple700
     "PETUGAS_LPS" -> Blue700
+    "PETUGAS_DOKUMENTASI_LPS" -> Cyan700
     "MASYARAKAT"  -> Green700
     "DLH"         -> Amber500
     else          -> Color.Gray
