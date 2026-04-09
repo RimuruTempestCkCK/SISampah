@@ -1,7 +1,7 @@
 package com.example.sisampah.model
 
 enum class UserRole {
-    MASYARAKAT, PETUGAS_LPS, ADMIN, DLH
+    MASYARAKAT, PETUGAS_LPS, ADMIN, DLH, PETUGAS_DOKUMENTASI_LPS
 }
 
 data class User(
@@ -17,7 +17,8 @@ data class TrashReport(
     val location: String,
     val description: String,
     val status: String, // e.g., "Menunggu", "Diproses", "Selesai"
-    val timestamp: String
+    val timestamp: String,
+    val image: String? = null
 )
 
 data class PickupSchedule(
@@ -27,5 +28,3 @@ data class PickupSchedule(
     val time: String,
     val officerName: String
 )
-
-
