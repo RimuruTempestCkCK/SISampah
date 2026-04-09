@@ -75,7 +75,8 @@ fun DLHDashboard(onLogout: () -> Unit) {
                 val tabs = listOf(
                     Triple("Beranda", Icons.Default.Dashboard, 0),
                     Triple("Monitor", Icons.Default.Engineering, 1),
-                    Triple("Rekap",   Icons.Default.BarChart, 2)
+                    Triple("Laporan", Icons.Default.BarChart, 2),
+                    Triple("Bayar",   Icons.Default.Payments, 3)
                 )
                 tabs.forEach { (label, icon, idx) ->
                     NavigationBarItem(
@@ -98,6 +99,7 @@ fun DLHDashboard(onLogout: () -> Unit) {
                 0 -> DLHHomeTab()
                 1 -> MonitorPetugasScreen()
                 2 -> RekapLaporanScreen()
+                3 -> PaymentReportScreen()
             }
         }
     }
