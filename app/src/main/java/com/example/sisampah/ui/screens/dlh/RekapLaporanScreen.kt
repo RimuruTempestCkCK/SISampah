@@ -148,7 +148,6 @@ fun RekapLaporanScreen() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Rekap Laporan Masyarakat", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    Text("Pantau data pelaporan sampah secara real-time", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                 }
                 Row {
                     IconButton(onClick = { showDatePicker = true }) {
