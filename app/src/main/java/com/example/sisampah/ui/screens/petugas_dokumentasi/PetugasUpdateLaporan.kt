@@ -1,9 +1,22 @@
 package com.example.sisampah.ui.screens.petugas_dokumentasi
 
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.location.Location
+import android.net.Uri
 import android.util.Base64
+import android.view.ViewGroup
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -25,16 +38,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.example.sisampah.data.MySqlHelper
 import com.example.sisampah.model.TrashReport
+import com.google.android.gms.location.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.URISyntaxException
 
 private val Green700 = Color(0xFF2E7D32)
 private val Green500 = Color(0xFF4CAF50)
 private val RedAccent = Color(0xFFE53935)
-private val BlueStat = Color(0xFF1565C0)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,67 +60,42 @@ fun PetugasUpdateLaporan() {
     var reports by remember { mutableStateOf<List<TrashReport>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var showDetailDialog by remember { mutableStateOf<TrashReport?>(null) }
+    
+    var currentUserLocation by remember { mutableStateOf<Location?>(null) }
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    fun loadData() {
-        isLoading = true
-        scope.launch(Dispatchers.IO) {
-            try {
-                val conn = MySqlHelper.getConnection()
-                if (conn != null) {
-                    val query = "SELECT * FROM trash_reports ORDER BY id DESC"
-                    val rs = conn.createStatement().executeQuery(query)
-                    val list = mutableListOf<TrashReport>()
-                    while (rs.next()) {
-                        list.add(TrashReport(
-                            id = rs.getInt("id").toString(),
-                            reporterName = rs.getString("reporterName") ?: "Unknown",
-                            location = rs.getString("location") ?: "",
-                            description = rs.getString("description") ?: "",
-                            status = rs.getString("status") ?: "Menunggu",
-                            timestamp = rs.getString("timestamp") ?: "",
-                            image = rs.getString("image")
-                        ))
+    val locationCallback = remember {
+        object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                result.lastLocation?.let { 
+                    // Update lokasi jika bergeser > 3 meter
+                    if (currentUserLocation == null || it.distanceTo(currentUserLocation!!) > 3f) {
+                        currentUserLocation = it 
                     }
-                    withContext(Dispatchers.Main) {
-                        reports = list
-                        isLoading = false
-                    }
-                    conn.close()
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    isLoading = false
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
 
-    fun updateStatus(id: String, newStatus: String) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val conn = MySqlHelper.getConnection()
-                if (conn != null) {
-                    val stmt = conn.prepareStatement("UPDATE trash_reports SET status = ? WHERE id = ?")
-                    stmt.setString(1, newStatus)
-                    stmt.setInt(2, id.toInt())
-                    stmt.executeUpdate()
-                    conn.close()
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Status diperbarui", Toast.LENGTH_SHORT).show()
-                        loadData()
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Gagal update: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+            startLocationUpdates(context, fusedLocationClient, locationCallback)
         }
     }
 
     LaunchedEffect(Unit) {
-        loadData()
+        loadData(context, scope) { list -> reports = list; isLoading = false }
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            startLocationUpdates(context, fusedLocationClient, locationCallback)
+        } else {
+            permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { fusedLocationClient.removeLocationUpdates(locationCallback) }
     }
 
     if (showDetailDialog != null) {
@@ -113,29 +104,58 @@ fun PetugasUpdateLaporan() {
             onDismissRequest = { showDetailDialog = null },
             title = { Text("Detail Laporan Dokumentasi") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Pelapor: ${report.reporterName}", fontWeight = FontWeight.Bold)
-                    Text("Lokasi: ${report.location}")
-                    Text("Keterangan: ${report.description}")
-                    Text("Status: ${report.status}")
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item { Text("Pelapor: ${report.reporterName}", fontWeight = FontWeight.Bold) }
+                    item { Text("Lokasi Sampah: ${report.location}") }
+                    item { Text("Keterangan: ${report.description}") }
+                    item { Text("Status: ${report.status}") }
                     
-                    report.image?.let { base64 ->
-                        val bitmap = remember(base64) {
-                            try {
-                                val bytes = Base64.decode(base64, Base64.DEFAULT)
-                                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                            } catch (e: Exception) { null }
+                    item {
+                        report.image?.let { base64 ->
+                            val bitmap = remember(base64) {
+                                try {
+                                    val bytes = Base64.decode(base64, Base64.DEFAULT)
+                                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                } catch (e: Exception) { null }
+                            }
+                            if (bitmap != null) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = "Foto Sampah",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
                         }
-                        if (bitmap != null) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "Foto Sampah",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(250.dp)
-                                    .clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
-                            )
+                    }
+
+                    item {
+                        Divider(Modifier.padding(vertical = 8.dp))
+                        Text("Rute Navigasi Live:", fontWeight = FontWeight.Bold)
+                        
+                        Card(
+                            Modifier.fillMaxWidth().height(350.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F0F0))
+                        ) {
+                            if (currentUserLocation != null) {
+                                MapWebView(
+                                    petugasLat = currentUserLocation!!.latitude,
+                                    petugasLng = currentUserLocation!!.longitude,
+                                    reportLocation = report.location
+                                )
+                            } else {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = Green700)
+                                        Spacer(Modifier.height(8.dp))
+                                        Text("Mengunci Sinyal GPS...", fontSize = 12.sp, color = Color.Gray)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -143,7 +163,9 @@ fun PetugasUpdateLaporan() {
             confirmButton = {
                 if (report.status == "Menunggu") {
                     Button(onClick = {
-                        updateStatus(report.id, "Selesai")
+                        updateStatus(report.id, "Selesai", context, scope) {
+                            loadData(context, scope) { list -> reports = list; isLoading = false }
+                        }
                         showDetailDialog = null
                     }, colors = ButtonDefaults.buttonColors(containerColor = Green700)) {
                         Text("Tandai Selesai")
@@ -169,7 +191,10 @@ fun PetugasUpdateLaporan() {
                     Text("Update Laporan Sampah", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                     Text("Kelola status laporan dari masyarakat", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                 }
-                IconButton(onClick = { loadData() }) {
+                IconButton(onClick = { 
+                    isLoading = true
+                    loadData(context, scope) { list -> reports = list; isLoading = false }
+                }) {
                     Icon(Icons.Default.Refresh, null, tint = Color.White, modifier = Modifier.size(28.dp))
                 }
             }
@@ -221,4 +246,102 @@ fun PetugasUpdateLaporan() {
             }
         }
     }
+}
+
+private fun startLocationUpdates(context: Context, client: FusedLocationProviderClient, callback: LocationCallback) {
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+    val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 4000)
+        .setMinUpdateIntervalMillis(2000)
+        .build()
+    client.requestLocationUpdates(request, callback, context.mainLooper)
+}
+
+private fun loadData(context: Context, scope: kotlinx.coroutines.CoroutineScope, onResult: (List<TrashReport>) -> Unit) {
+    scope.launch(Dispatchers.IO) {
+        try {
+            val conn = MySqlHelper.getConnection()
+            if (conn != null) {
+                val rs = conn.createStatement().executeQuery("SELECT * FROM trash_reports ORDER BY id DESC")
+                val list = mutableListOf<TrashReport>()
+                while (rs.next()) {
+                    list.add(TrashReport(
+                        id = rs.getInt("id").toString(),
+                        reporterName = rs.getString("reporterName") ?: "Unknown",
+                        location = rs.getString("location") ?: "",
+                        description = rs.getString("description") ?: "",
+                        status = rs.getString("status") ?: "Menunggu",
+                        timestamp = rs.getString("timestamp") ?: "",
+                        image = rs.getString("image")
+                    ))
+                }
+                withContext(Dispatchers.Main) { onResult(list) }
+                conn.close()
+            }
+        } catch (e: Exception) {}
+    }
+}
+
+private fun updateStatus(id: String, newStatus: String, context: Context, scope: kotlinx.coroutines.CoroutineScope, onComplete: () -> Unit) {
+    scope.launch(Dispatchers.IO) {
+        try {
+            val conn = MySqlHelper.getConnection()
+            if (conn != null) {
+                val stmt = conn.prepareStatement("UPDATE trash_reports SET status = ? WHERE id = ?")
+                stmt.setString(1, newStatus)
+                stmt.setInt(2, id.toInt())
+                stmt.executeUpdate()
+                conn.close()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Status diperbarui", Toast.LENGTH_SHORT).show()
+                    onComplete()
+                }
+            }
+        } catch (e: Exception) {}
+    }
+}
+
+@Composable
+fun MapWebView(petugasLat: Double, petugasLng: Double, reportLocation: String) {
+    val encodedAddr = Uri.encode(reportLocation)
+    val mapUrl = "https://maps.google.com/maps?saddr=$petugasLat,$petugasLng&daddr=$encodedAddr&output=embed"
+    
+    // Membungkus URL ke dalam Iframe agar tidak error
+    val htmlData = """
+        <html>
+        <body style="margin:0;padding:0;">
+            <iframe width="100%" height="100%" frameborder="0" style="border:0" 
+                src="$mapUrl" allowfullscreen>
+            </iframe>
+        </body>
+        </html>
+    """.trimIndent()
+
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                webViewClient = WebViewClient()
+                settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    useWideViewPort = true
+                    loadWithOverviewMode = true
+                }
+                loadDataWithBaseURL("https://maps.google.com", htmlData, "text/html", "UTF-8", null)
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+        update = { webView ->
+            // Update rute jika lokasi berubah (disimpan di tag untuk perbandingan)
+            val lastLoc = webView.tag as? String
+            val currentLocStr = "$petugasLat,$petugasLng"
+            if (lastLoc != currentLocStr) {
+                webView.tag = currentLocStr
+                webView.loadDataWithBaseURL("https://maps.google.com", htmlData, "text/html", "UTF-8", null)
+            }
+        }
+    )
 }

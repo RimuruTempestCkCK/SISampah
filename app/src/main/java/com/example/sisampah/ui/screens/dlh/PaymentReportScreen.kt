@@ -1,10 +1,19 @@
 package com.example.sisampah.ui.screens.dlh
 
+import android.content.Context
+import android.content.Intent
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
+import android.net.Uri
+import android.os.Environment
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,11 +32,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.example.sisampah.data.MySqlHelper
 import com.example.sisampah.ui.screens.admin.StatCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.*
 
 private val Green700 = Color(0xFF2E7D32)
 private val Green500 = Color(0xFF4CAF50)
@@ -39,7 +53,8 @@ data class PaymentSummary(
     val username: String,
     val totalDibayar: Double,
     val totalTransaksi: Int,
-    val statusTerakhir: String
+    val statusTerakhir: String,
+    val bulanBelumBayar: List<String> = emptyList()
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,6 +70,12 @@ fun PaymentReportScreen() {
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
 
+    val bulanList = listOf(
+        "Januari 2026", "Februari 2026", "Maret 2026", "April 2026", 
+        "Mei 2026", "Juni 2026", "Juli 2026", "Agustus 2026", 
+        "September 2026", "Oktober 2026", "November 2026", "Desember 2026"
+    )
+
     fun loadData() {
         isLoading = true
         scope.launch(Dispatchers.IO) {
@@ -62,7 +83,8 @@ fun PaymentReportScreen() {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
                     val query = """
-                        SELECT username, SUM(jumlah) as total, COUNT(*) as transaksi, 
+                        SELECT username, SUM(CASE WHEN status = 'LUNAS' THEN jumlah ELSE 0 END) as total, 
+                        COUNT(CASE WHEN status = 'LUNAS' THEN 1 END) as transaksi, 
                         (SELECT status FROM payments p2 WHERE p2.username = p1.username ORDER BY id DESC LIMIT 1) as status_terakhir
                         FROM payments p1
                         GROUP BY username
@@ -75,17 +97,30 @@ fun PaymentReportScreen() {
                     var lunasCount = 0
                     
                     while (rs.next()) {
+                        val user = rs.getString("username") ?: "Unknown"
                         val total = rs.getDouble("total")
                         val status = rs.getString("status_terakhir") ?: "BELUM BAYAR"
                         
                         grandTotal += total
                         if (status == "LUNAS") lunasCount++
+
+                        // Get unpaid months for this user
+                        val unpaidList = mutableListOf<String>()
+                        val unpaidStmt = conn.prepareStatement("SELECT bulan FROM payments WHERE username = ? AND status != 'LUNAS'")
+                        unpaidStmt.setString(1, user)
+                        val unpaidRs = unpaidStmt.executeQuery()
+                        while (unpaidRs.next()) {
+                            unpaidList.add(unpaidRs.getString("bulan"))
+                        }
+                        unpaidRs.close()
+                        unpaidStmt.close()
                         
                         list.add(PaymentSummary(
-                            rs.getString("username") ?: "Unknown",
+                            user,
                             total,
                             rs.getInt("transaksi"),
-                            status
+                            status,
+                            unpaidList
                         ))
                     }
                     
@@ -126,8 +161,13 @@ fun PaymentReportScreen() {
                 Column(Modifier.weight(1f)) {
                     Text("Laporan Pembayaran Iuran", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 }
-                IconButton(onClick = { loadData() }) {
-                    Icon(Icons.Default.Refresh, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                Row {
+                    IconButton(onClick = { generatePdf(context, paymentSummaries, totalPendapatan) }) {
+                        Icon(Icons.Default.Print, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                    }
+                    IconButton(onClick = { loadData() }) {
+                        Icon(Icons.Default.Refresh, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                    }
                 }
             }
         }
@@ -194,42 +234,60 @@ fun PaymentReportScreen() {
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         elevation = CardDefaults.cardElevation(2.dp)
                     ) {
-                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier.size(44.dp).clip(CircleShape).background(Green700.copy(0.1f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    payment.username.take(1).uppercase(),
-                                    fontWeight = FontWeight.Bold,
-                                    color = Green700,
-                                    fontSize = 18.sp
-                                )
-                            }
-                            Spacer(Modifier.width(16.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(payment.username, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                Text("${payment.totalTransaksi} kali pembayaran", fontSize = 12.sp, color = Color.Gray)
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    "Rp ${payment.totalDibayar.toInt()}",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = Green700
-                                )
-                                Surface(
-                                    color = if (payment.statusTerakhir == "LUNAS") Green700.copy(0.1f) else RedAccent.copy(0.1f),
-                                    shape = RoundedCornerShape(4.dp)
+                        Column(Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier.size(44.dp).clip(CircleShape).background(Green700.copy(0.1f)),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        payment.statusTerakhir,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        fontSize = 9.sp,
-                                        color = if (payment.statusTerakhir == "LUNAS") Green700 else RedAccent,
-                                        fontWeight = FontWeight.Bold
+                                        payment.username.take(1).uppercase(),
+                                        fontWeight = FontWeight.Bold,
+                                        color = Green700,
+                                        fontSize = 18.sp
                                     )
                                 }
+                                Spacer(Modifier.width(16.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(payment.username, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    Text("${payment.totalTransaksi} kali pembayaran", fontSize = 12.sp, color = Color.Gray)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        "Rp ${payment.totalDibayar.toInt()}",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Green700
+                                    )
+                                    Surface(
+                                        color = if (payment.statusTerakhir == "LUNAS") Green700.copy(0.1f) else RedAccent.copy(0.1f),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            payment.statusTerakhir,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            fontSize = 9.sp,
+                                            color = if (payment.statusTerakhir == "LUNAS") Green700 else RedAccent,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            if (payment.bulanBelumBayar.isNotEmpty()) {
+                                Spacer(Modifier.height(12.dp))
+                                Divider(thickness = 0.5.dp, color = Color.LightGray)
+                                Spacer(Modifier.height(8.dp))
+                                Text("Bulan Belum Bayar:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RedAccent)
+                                Text(
+                                    payment.bulanBelumBayar.joinToString(", "),
+                                    fontSize = 10.sp,
+                                    color = Color.Gray,
+                                    lineHeight = 14.sp
+                                )
+                            } else {
+                                Spacer(Modifier.height(12.dp))
+                                Text("Sudah bayar semua bulan (2026)", fontSize = 11.sp, color = Green700, fontWeight = FontWeight.Medium)
                             }
                         }
                     }
@@ -238,5 +296,78 @@ fun PaymentReportScreen() {
                 item { Spacer(Modifier.height(16.dp)) }
             }
         }
+    }
+}
+
+fun generatePdf(context: Context, data: List<PaymentSummary>, totalPendapatan: Double) {
+    val pdfDocument = PdfDocument()
+    val paint = Paint()
+    val titlePaint = Paint()
+    
+    val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+    val page = pdfDocument.startPage(pageInfo)
+    val canvas = page.canvas
+
+    // Header
+    titlePaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    titlePaint.textSize = 18f
+    canvas.drawText("LAPORAN PEMBAYARAN IURAN SISAMPAL", 40f, 50f, titlePaint)
+    
+    paint.textSize = 10f
+    val date = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
+    canvas.drawText("Dicetak pada: $date", 40f, 70f, paint)
+    canvas.drawText("Total Pendapatan: Rp ${totalPendapatan.toInt()}", 40f, 85f, paint)
+
+    // Table Header
+    var yPos = 120f
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    canvas.drawText("Nama Warga", 40f, yPos, paint)
+    canvas.drawText("Total Bayar", 180f, yPos, paint)
+    canvas.drawText("Transaksi", 280f, yPos, paint)
+    canvas.drawText("Status", 350f, yPos, paint)
+    canvas.drawText("Tunggakan (Bulan)", 420f, yPos, paint)
+    
+    canvas.drawLine(40f, yPos + 5, 550f, yPos + 5, paint)
+    yPos += 25f
+    
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+    data.forEach { item ->
+        if (yPos > 800f) { // Simple page break handling
+            pdfDocument.finishPage(page)
+            // This is simplified, for real apps use multiple pages logic
+            return@forEach 
+        }
+        
+        canvas.drawText(item.username, 40f, yPos, paint)
+        canvas.drawText("Rp ${item.totalDibayar.toInt()}", 180f, yPos, paint)
+        canvas.drawText("${item.totalTransaksi}", 280f, yPos, paint)
+        canvas.drawText(item.statusTerakhir, 350f, yPos, paint)
+        
+        val tunggakan = if (item.bulanBelumBayar.isEmpty()) "-" else item.bulanBelumBayar.size.toString()
+        canvas.drawText(tunggakan, 420f, yPos, paint)
+        
+        yPos += 20f
+    }
+
+    pdfDocument.finishPage(page)
+
+    val fileName = "Laporan_Pembayaran_${System.currentTimeMillis()}.pdf"
+    val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
+
+    try {
+        pdfDocument.writeTo(FileOutputStream(file))
+        Toast.makeText(context, "PDF berhasil disimpan di Documents", Toast.LENGTH_LONG).show()
+        
+        // Open the PDF
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val intent = Intent(Intent.ACTION_VIEW)
+        intent.setDataAndType(uri, "application/pdf")
+        intent.flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        context.startActivity(intent)
+        
+    } catch (e: Exception) {
+        Toast.makeText(context, "Gagal cetak: ${e.message}", Toast.LENGTH_SHORT).show()
+    } finally {
+        pdfDocument.close()
     }
 }
