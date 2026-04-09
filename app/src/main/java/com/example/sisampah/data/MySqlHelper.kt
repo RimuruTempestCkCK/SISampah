@@ -7,7 +7,7 @@ import java.sql.Connection
 import java.sql.DriverManager
 
 object MySqlHelper {
-    private const val IP = "192.168.18.89"
+    private const val IP = "172.20.10.5"
     private const val PORT = "3306"
     private const val DB_NAME = "sisampah_db"
     private const val USER = "root"

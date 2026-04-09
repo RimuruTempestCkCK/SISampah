@@ -125,7 +125,6 @@ fun PaymentReportScreen() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Laporan Pembayaran Iuran", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    Text("Pantau rekapitulasi iuran kebersihan warga", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                 }
                 IconButton(onClick = { loadData() }) {
                     Icon(Icons.Default.Refresh, null, tint = Color.White, modifier = Modifier.size(28.dp))
