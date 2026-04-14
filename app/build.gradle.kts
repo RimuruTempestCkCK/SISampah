@@ -56,6 +56,7 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.mysql.connector)
     implementation(libs.play.services.location)
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
