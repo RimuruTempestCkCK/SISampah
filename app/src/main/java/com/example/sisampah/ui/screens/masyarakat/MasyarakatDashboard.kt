@@ -109,6 +109,7 @@ fun MasyarakatDashboard(username: String, onLogout: () -> Unit) {
 @Composable
 fun HomeTab(username: String) {
     var visible by remember { mutableStateOf(false) }
+    var userFullName by remember { mutableStateOf(username) }
     var totalLaporan by remember { mutableStateOf("0") }
     var statusAktif by remember { mutableStateOf("0") }
     var jadwalHari by remember { mutableStateOf("Belum ada jadwal") }
@@ -132,6 +133,10 @@ fun HomeTab(username: String) {
                     }
                     rsUser.close()
                     stmtUser.close()
+                    
+                    withContext(Dispatchers.Main) {
+                        userFullName = userRealName
+                    }
 
                     // Hitung Laporan Saya
                     val stmtLaporan = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports WHERE reporterName = ?")
@@ -194,7 +199,7 @@ fun HomeTab(username: String) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Selamat Datang,", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
-                            Text(username, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text(userFullName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                             Spacer(Modifier.height(4.dp))
                             Text("Ayo jaga kebersihan lingkungan kita!", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
                         }

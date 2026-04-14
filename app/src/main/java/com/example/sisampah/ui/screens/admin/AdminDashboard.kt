@@ -43,7 +43,7 @@ private val BlueStat       = Color(0xFF1565C0)
 // ═══════════════════════════════════════════════════════════════════════════════
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AdminDashboard(onLogout: () -> Unit) {
+fun AdminDashboard(username: String, onLogout: () -> Unit) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
@@ -105,7 +105,7 @@ fun AdminDashboard(onLogout: () -> Unit) {
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
             when (selectedTab) {
-                0 -> HomeTab()
+                0 -> HomeTab(username)
                 1 -> ManageUserScreen()
                 2 -> ManageScheduleScreen()
                 3 -> PetugasScreen()
@@ -119,8 +119,9 @@ fun AdminDashboard(onLogout: () -> Unit) {
 //  TAB 0 — BERANDA (DASHBOARD RINGKASAN)
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
-fun HomeTab() {
+fun HomeTab(username: String) {
     var visible by remember { mutableStateOf(false) }
+    var userFullName by remember { mutableStateOf(username) }
     var totalUser by remember { mutableStateOf("0") }
     var totalLaporan by remember { mutableStateOf("0") }
     var totalJadwal by remember { mutableStateOf("0") }
@@ -135,6 +136,16 @@ fun HomeTab() {
             try {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
+                    // Cari Nama Asli dari username
+                    val stmtUser = conn.prepareStatement("SELECT nama FROM users WHERE username = ?")
+                    stmtUser.setString(1, username)
+                    val rsUser = stmtUser.executeQuery()
+                    if (rsUser.next()) {
+                        val realName = rsUser.getString("nama")
+                        withContext(Dispatchers.Main) { userFullName = realName ?: username }
+                    }
+                    rsUser.close(); stmtUser.close()
+
                     // Total Users
                     val stmtU = conn.prepareStatement("SELECT COUNT(*) FROM users")
                     val rsU = stmtU.executeQuery()
@@ -187,7 +198,7 @@ fun HomeTab() {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Selamat Datang,", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
-                            Text("Admin Lapor-Sampah", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text(userFullName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                             Spacer(Modifier.height(4.dp))
                             Text(today, color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
                         }

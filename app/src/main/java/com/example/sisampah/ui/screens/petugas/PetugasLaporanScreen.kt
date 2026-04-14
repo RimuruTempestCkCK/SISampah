@@ -1,8 +1,18 @@
 package com.example.sisampah.ui.screens.petugas
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.location.Location
+import android.net.Uri
 import android.util.Base64
+import android.view.ViewGroup
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -24,8 +34,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.example.sisampah.data.MySqlHelper
 import com.example.sisampah.model.TrashReport
+import com.google.android.gms.location.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -42,6 +55,29 @@ fun PetugasLaporanScreen() {
     var reports by remember { mutableStateOf<List<TrashReport>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var showDetailDialog by remember { mutableStateOf<TrashReport?>(null) }
+    
+    var currentUserLocation by remember { mutableStateOf<Location?>(null) }
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    val locationCallback = remember {
+        object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                result.lastLocation?.let { 
+                    if (currentUserLocation == null || it.distanceTo(currentUserLocation!!) > 3f) {
+                        currentUserLocation = it 
+                    }
+                }
+            }
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+            startLocationUpdates(context, fusedLocationClient, locationCallback)
+        }
+    }
 
     fun loadData() {
         isLoading = true
@@ -49,13 +85,20 @@ fun PetugasLaporanScreen() {
             try {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
-                    val query = "SELECT * FROM trash_reports ORDER BY id DESC"
+                    val query = """
+                        SELECT tr.*, u.nama as real_name 
+                        FROM trash_reports tr
+                        LEFT JOIN users u ON tr.reporterName = u.username
+                        ORDER BY tr.id DESC
+                    """.trimIndent()
+                    
                     val rs = conn.createStatement().executeQuery(query)
                     val list = mutableListOf<TrashReport>()
                     while (rs.next()) {
+                        val realName = rs.getString("real_name") ?: rs.getString("reporterName")
                         list.add(TrashReport(
                             id = rs.getInt("id").toString(),
-                            reporterName = rs.getString("reporterName") ?: "Unknown",
+                            reporterName = realName ?: "Unknown",
                             location = rs.getString("location") ?: "",
                             description = rs.getString("description") ?: "",
                             status = rs.getString("status") ?: "Menunggu",
@@ -80,6 +123,15 @@ fun PetugasLaporanScreen() {
 
     LaunchedEffect(Unit) {
         loadData()
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            startLocationUpdates(context, fusedLocationClient, locationCallback)
+        } else {
+            permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { fusedLocationClient.removeLocationUpdates(locationCallback) }
     }
 
     if (showDetailDialog != null) {
@@ -88,29 +140,58 @@ fun PetugasLaporanScreen() {
             onDismissRequest = { showDetailDialog = null },
             title = { Text("Detail Laporan Masyarakat") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Pelapor: ${report.reporterName}", fontWeight = FontWeight.Bold)
-                    Text("Lokasi: ${report.location}")
-                    Text("Keterangan: ${report.description}")
-                    Text("Status: ${report.status}")
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item { Text("Pelapor: ${report.reporterName}", fontWeight = FontWeight.Bold) }
+                    item { Text("Lokasi: ${report.location}") }
+                    item { Text("Keterangan: ${report.description}") }
+                    item { Text("Status: ${report.status}") }
                     
-                    report.image?.let { base64 ->
-                        val bitmap = remember(base64) {
-                            try {
-                                val bytes = Base64.decode(base64, Base64.DEFAULT)
-                                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                            } catch (e: Exception) { null }
+                    item {
+                        report.image?.let { base64 ->
+                            val bitmap = remember(base64) {
+                                try {
+                                    val bytes = Base64.decode(base64, Base64.DEFAULT)
+                                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                } catch (e: Exception) { null }
+                            }
+                            if (bitmap != null) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = "Foto Sampah",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
                         }
-                        if (bitmap != null) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "Foto Sampah",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(250.dp)
-                                    .clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
-                            )
+                    }
+
+                    item {
+                        Divider(Modifier.padding(vertical = 8.dp))
+                        Text("Rute Navigasi Live:", fontWeight = FontWeight.Bold)
+                        
+                        Card(
+                            Modifier.fillMaxWidth().height(350.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F0F0))
+                        ) {
+                            if (currentUserLocation != null) {
+                                MapWebView(
+                                    petugasLat = currentUserLocation!!.latitude,
+                                    petugasLng = currentUserLocation!!.longitude,
+                                    reportLocation = report.location
+                                )
+                            } else {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = Green700)
+                                        Spacer(Modifier.height(8.dp))
+                                        Text("Mengunci Sinyal GPS...", fontSize = 12.sp, color = Color.Gray)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -186,4 +267,48 @@ fun PetugasLaporanScreen() {
             }
         }
     }
+}
+
+private fun startLocationUpdates(context: Context, client: FusedLocationProviderClient, callback: LocationCallback) {
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+    val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 4000)
+        .setMinUpdateIntervalMillis(2000)
+        .build()
+    client.requestLocationUpdates(request, callback, context.mainLooper)
+}
+
+@Composable
+fun MapWebView(petugasLat: Double, petugasLng: Double, reportLocation: String) {
+    val encodedAddr = Uri.encode(reportLocation)
+    val mapUrl = "https://maps.google.com/maps?saddr=$petugasLat,$petugasLng&daddr=$encodedAddr&output=embed"
+    
+    val htmlData = """
+        <html>
+        <body style="margin:0;padding:0;">
+            <iframe width="100%" height="100%" frameborder="0" style="border:0" 
+                src="$mapUrl" allowfullscreen>
+            </iframe>
+        </body>
+        </html>
+    """.trimIndent()
+
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                webViewClient = WebViewClient()
+                settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    useWideViewPort = true
+                    loadWithOverviewMode = true
+                }
+                loadDataWithBaseURL("https://maps.google.com", htmlData, "text/html", "UTF-8", null)
+            }
+        },
+        modifier = Modifier.fillMaxSize()
+    )
 }

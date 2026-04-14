@@ -1,5 +1,10 @@
 package com.example.sisampah.ui.screens.petugas_dokumentasi
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
@@ -17,13 +22,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.sisampah.data.MySqlHelper
 import com.example.sisampah.ui.screens.admin.StatCard
 import com.example.sisampah.ui.screens.admin.SectionCard
 import com.example.sisampah.ui.screens.admin.ActivityRow
+import com.google.android.gms.location.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -41,6 +49,51 @@ private val BlueStat       = Color(0xFF1565C0)
 @Composable
 fun PetugasDokumentasiDashboard(username: String, onLogout: () -> Unit) {
     var selectedTab by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    // Logic untuk update lokasi ke database secara berkala (Real-time tracking)
+    val locationCallback = remember {
+        object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                val loc = result.lastLocation ?: return
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val conn = MySqlHelper.getConnection()
+                        if (conn != null) {
+                            val stmt = conn.prepareStatement("UPDATE users SET latitude = ?, longitude = ? WHERE username = ?")
+                            stmt.setDouble(1, loc.latitude)
+                            stmt.setDouble(2, loc.longitude)
+                            stmt.setString(3, username)
+                            stmt.executeUpdate()
+                            conn.close()
+                        }
+                    } catch (e: Exception) { e.printStackTrace() }
+                }
+            }
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            startLocationUpdates(context, fusedLocationClient, locationCallback)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            startLocationUpdates(context, fusedLocationClient, locationCallback)
+        } else {
+            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { fusedLocationClient.removeLocationUpdates(locationCallback) }
+    }
 
     Scaffold(
         containerColor = Color(0xFFF5F5F5),
@@ -58,6 +111,7 @@ fun PetugasDokumentasiDashboard(username: String, onLogout: () -> Unit) {
                             Icon(Icons.Default.PhotoCamera, null, tint = Color.White, modifier = Modifier.size(20.dp))
                         }
                         Spacer(Modifier.width(10.dp))
+                        @Suppress("DEPRECATION")
                         Column {
                             Text("Lapor-Sampah", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             Text("Petugas Dokumentasi", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -105,9 +159,18 @@ fun PetugasDokumentasiDashboard(username: String, onLogout: () -> Unit) {
     }
 }
 
+private fun startLocationUpdates(context: Context, client: FusedLocationProviderClient, callback: LocationCallback) {
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+    val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000)
+        .setMinUpdateIntervalMillis(5000)
+        .build()
+    client.requestLocationUpdates(request, callback, context.mainLooper)
+}
+
 @Composable
 fun PetugasHomeTab(username: String) {
     var visible by remember { mutableStateOf(false) }
+    var userFullName by remember { mutableStateOf(username) }
     var totalLaporan by remember { mutableStateOf("0") }
     var laporanSelesai by remember { mutableStateOf("0") }
     val scope = rememberCoroutineScope()
@@ -119,7 +182,15 @@ fun PetugasHomeTab(username: String) {
             try {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
-                    // Hitung Semua Laporan dari Masyarakat
+                    val stmtUser = conn.prepareStatement("SELECT nama FROM users WHERE username = ?")
+                    stmtUser.setString(1, username)
+                    val rsUser = stmtUser.executeQuery()
+                    if (rsUser.next()) {
+                        val realName = rsUser.getString("nama")
+                        withContext(Dispatchers.Main) { userFullName = realName ?: username }
+                    }
+                    rsUser.close(); stmtUser.close()
+
                     val stmtTotal = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports")
                     val rsTotal = stmtTotal.executeQuery()
                     if (rsTotal.next()) {
@@ -128,7 +199,6 @@ fun PetugasHomeTab(username: String) {
                     }
                     rsTotal.close(); stmtTotal.close()
 
-                    // Hitung Laporan yang sudah ditandai Selesai
                     val stmtSelesai = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports WHERE status = 'Selesai'")
                     val rsSelesai = stmtSelesai.executeQuery()
                     if (rsSelesai.next()) {
@@ -162,7 +232,7 @@ fun PetugasHomeTab(username: String) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Halo,", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
-                            Text(username, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text(userFullName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                             Spacer(Modifier.height(4.dp))
                             Text(today, color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
                         }

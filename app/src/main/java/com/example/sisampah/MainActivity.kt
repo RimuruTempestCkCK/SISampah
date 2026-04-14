@@ -91,19 +91,25 @@ fun AppNavigation() {
         }
 
         composable("admin_dashboard") {
-            AdminDashboard(onLogout = {
-                navController.navigate("login") {
-                    popUpTo("admin_dashboard") { inclusive = true }
+            AdminDashboard(
+                username = loggedInUsername,
+                onLogout = {
+                    navController.navigate("login") {
+                        popUpTo("admin_dashboard") { inclusive = true }
+                    }
                 }
-            })
+            )
         }
 
         composable("dlh_dashboard") {
-            DLHDashboard(onLogout = {
-                navController.navigate("login") {
-                    popUpTo("dlh_dashboard") { inclusive = true }
+            DLHDashboard(
+                username = loggedInUsername,
+                onLogout = {
+                    navController.navigate("login") {
+                        popUpTo("dlh_dashboard") { inclusive = true }
+                    }
                 }
-            })
+            )
         }
 
         composable("petugas_dokumentasi_dashboard") {

@@ -37,7 +37,7 @@ private val BlueStat       = Color(0xFF1565C0)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DLHDashboard(onLogout: () -> Unit) {
+fun DLHDashboard(username: String, onLogout: () -> Unit) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
@@ -74,6 +74,7 @@ fun DLHDashboard(onLogout: () -> Unit) {
             NavigationBar(containerColor = Color.White) {
                 val tabs = listOf(
                     Triple("Beranda", Icons.Default.Dashboard, 0),
+                    Triple("Peta",    Icons.Default.Map, 4),
                     Triple("Monitor", Icons.Default.Engineering, 1),
                     Triple("Laporan", Icons.Default.BarChart, 2),
                     Triple("Bayar",   Icons.Default.Payments, 3)
@@ -100,6 +101,7 @@ fun DLHDashboard(onLogout: () -> Unit) {
                 1 -> MonitorPetugasScreen()
                 2 -> RekapLaporanScreen()
                 3 -> PaymentReportScreen()
+                4 -> MapScreen(username)
             }
         }
     }

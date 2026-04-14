@@ -1,17 +1,11 @@
-package com.example.sisampah.ui.screens.masyarakat
+package com.example.sisampah.ui.screens.dlh
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.pm.PackageManager
 import android.graphics.*
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.location.Location
-import android.location.LocationManager
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -34,10 +28,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
-import androidx.core.content.ContextCompat
 import com.example.sisampah.data.MySqlHelper
+import com.example.sisampah.ui.screens.masyarakat.createProfessionalMarker
 import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -51,7 +44,6 @@ import org.osmdroid.views.overlay.Marker
 private val GreenPrimary   = Color(0xFF2E7D32)
 private val GreenLight     = Color(0xFF4CAF50)
 private val BlueStat       = Color(0xFF1565C0)
-private val RedAccent      = Color(0xFFE53935)
 
 data class UserLocation(
     val id: Int,
@@ -72,62 +64,28 @@ fun MapScreen(username: String) {
     var isLoading by remember { mutableStateOf(true) }
     var mapReference by remember { mutableStateOf<MapView?>(null) }
     val scope = rememberCoroutineScope()
-    
+
+    // OSMDroid Configuration
+    LaunchedEffect(Unit) {
+        Configuration.getInstance().load(context, context.getSharedPreferences("osm", 0))
+    }
+
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                      permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (granted) {
-            Toast.makeText(context, "Izin lokasi diberikan", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(context, "Izin lokasi ditolak", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun isGpsEnabled(): Boolean {
-        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
-    }
-
-    fun updateCurrentLocation(onResult: (Location?) -> Unit = {}) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-            return
-        }
-
-        fusedLocationClient.lastLocation.addOnSuccessListener { lastLoc ->
-            if (lastLoc != null) {
-                myLocation = UserLocation(0, username, "MASYARAKAT", lastLoc.latitude, lastLoc.longitude, "Lokasi Anda", "Live")
-                onResult(lastLoc)
-            }
-            
-            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
-                .addOnSuccessListener { currentLoc ->
-                    if (currentLoc != null) {
-                        myLocation = UserLocation(0, username, "MASYARAKAT", currentLoc.latitude, currentLoc.longitude, "Lokasi Anda", "Live")
-                        if (lastLoc == null) onResult(currentLoc)
-                    } else if (lastLoc == null) {
-                        onResult(null)
-                    }
-                }
-                .addOnFailureListener {
-                    if (lastLoc == null) onResult(null)
-                }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        Configuration.getInstance().userAgentValue = context.packageName
-        Configuration.getInstance().load(context, context.getSharedPreferences("osm", 0))
-        updateCurrentLocation()
-    }
-
-    fun fetchPetugasLocations() {
+    fun fetchLocations() {
         scope.launch(Dispatchers.IO) {
             try {
+                // Ambil lokasi saya (Admin/DLH) secara berkala
+                fusedLocationClient.lastLocation.addOnSuccessListener { loc: Location? ->
+                    loc?.let {
+                        myLocation = UserLocation(
+                            0, username, "DLH", 
+                            it.latitude, it.longitude, 
+                            "Lokasi Kantor", "Live"
+                        )
+                    }
+                }
+
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
                     val stmtPetugas = conn.prepareStatement("SELECT id, nama, role, latitude, longitude FROM users WHERE role LIKE 'PETUGAS%' AND latitude IS NOT NULL")
@@ -141,7 +99,7 @@ fun MapScreen(username: String) {
                             rsPetugas.getString("role"),
                             rsPetugas.getDouble("latitude"),
                             rsPetugas.getDouble("longitude"),
-                            "Area Operasional",
+                            "Area Operasional Petugas",
                             "Aktif"
                         ))
                     }
@@ -159,9 +117,8 @@ fun MapScreen(username: String) {
 
     LaunchedEffect(Unit) {
         while(true) {
-            fetchPetugasLocations()
-            updateCurrentLocation()
-            delay(10000) // Update setiap 10 detik
+            fetchLocations()
+            delay(10000)
         }
     }
 
@@ -179,11 +136,11 @@ fun MapScreen(username: String) {
                         Box(
                             Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(0.2f)),
                             contentAlignment = Alignment.Center
-                        ) { Icon(Icons.Default.Map, null, tint = Color.White) }
+                        ) { Icon(Icons.Default.AdminPanelSettings, null, tint = Color.White) }
                         Spacer(Modifier.width(12.dp))
                         Column {
-                            Text("Peta Live Petugas", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            Text("Monitoring Armada LPS", color = Color.White.copy(0.8f), fontSize = 12.sp)
+                            Text("Monitoring Seluruh Petugas", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text("Panel Pengawasan DLH", color = Color.White.copy(0.8f), fontSize = 12.sp)
                         }
                     }
                 }
@@ -196,7 +153,7 @@ fun MapScreen(username: String) {
                         MapView(ctx).apply {
                             setTileSource(TileSourceFactory.MAPNIK)
                             setMultiTouchControls(true)
-                            controller.setZoom(15.0)
+                            controller.setZoom(14.0)
                             controller.setCenter(GeoPoint(-0.947, 100.417))
                             mapReference = this
                         }
@@ -204,15 +161,18 @@ fun MapScreen(username: String) {
                     update = { mapView ->
                         mapView.overlays.clear()
                         
+                        // Marker Petugas (Professional Pin)
                         locations.forEach { loc ->
                             val marker = Marker(mapView)
                             marker.position = GeoPoint(loc.latitude, loc.longitude)
                             marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                             marker.title = loc.name
+                            marker.subDescription = "Petugas LPS: ${loc.role}"
                             marker.icon = createProfessionalMarker(context, "truck", GreenPrimary.toArgb())
                             mapView.overlays.add(marker)
                         }
 
+                        // Marker Saya (DLH Center)
                         myLocation?.let {
                             val marker = Marker(mapView)
                             marker.position = GeoPoint(it.latitude, it.longitude)
@@ -234,17 +194,17 @@ fun MapScreen(username: String) {
 
             // Bottom Card
             Card(
-                modifier = Modifier.fillMaxWidth().height(220.dp).zIndex(10f),
+                modifier = Modifier.fillMaxWidth().height(240.dp).zIndex(10f),
                 shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(16.dp)
             ) {
                 Column(Modifier.padding(24.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Armada Aktif", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
+                        Text("Daftar Petugas Lapangan", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
                         Spacer(Modifier.weight(1f))
                         Surface(color = GreenPrimary.copy(0.1f), shape = RoundedCornerShape(12.dp)) {
-                            Text("${locations.size} Petugas", modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, color = GreenPrimary, fontWeight = FontWeight.Bold)
+                            Text("${locations.size} Total", modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, color = GreenPrimary, fontWeight = FontWeight.Bold)
                         }
                     }
                     Spacer(Modifier.height(16.dp))
@@ -254,17 +214,15 @@ fun MapScreen(username: String) {
                                 Box(
                                     Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(GreenPrimary.copy(0.1f)),
                                     contentAlignment = Alignment.Center
-                                ) { Icon(Icons.Default.LocalShipping, null, tint = GreenPrimary, modifier = Modifier.size(20.dp)) }
+                                ) { Icon(Icons.Default.Engineering, null, tint = GreenPrimary, modifier = Modifier.size(20.dp)) }
                                 Spacer(Modifier.width(12.dp))
                                 Column {
                                     Text(loc.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Text("Sedang beroperasi", fontSize = 11.sp, color = Color.Gray)
+                                    Text(loc.role, fontSize = 11.sp, color = Color.Gray)
                                 }
                                 Spacer(Modifier.weight(1f))
-                                IconButton(onClick = {
-                                    mapReference?.controller?.animateTo(GeoPoint(loc.latitude, loc.longitude))
-                                }) {
-                                    Icon(Icons.Default.GpsFixed, null, tint = Color.LightGray, modifier = Modifier.size(20.dp))
+                                Surface(color = GreenLight.copy(0.1f), shape = CircleShape) {
+                                    Box(Modifier.size(8.dp).background(GreenLight))
                                 }
                             }
                         }
@@ -273,68 +231,15 @@ fun MapScreen(username: String) {
             }
         }
 
-        // FAB Lokasi Saya
+        // FAB Lokasi Kantor
         FloatingActionButton(
             onClick = {
-                if (!isGpsEnabled()) {
-                    Toast.makeText(context, "Mohon aktifkan GPS/Lokasi di HP Anda", Toast.LENGTH_LONG).show()
-                }
-                
-                updateCurrentLocation { loc ->
-                    if (loc != null) {
-                        mapReference?.controller?.animateTo(GeoPoint(loc.latitude, loc.longitude))
-                    } else {
-                        Toast.makeText(context, "Mencari sinyal GPS...", Toast.LENGTH_SHORT).show()
-                    }
-                }
+                myLocation?.let { mapReference?.controller?.animateTo(GeoPoint(it.latitude, it.longitude)) }
             },
-            modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 240.dp, end = 20.dp).zIndex(15f),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 260.dp, end = 20.dp).zIndex(15f),
             containerColor = Color.White,
             contentColor = BlueStat,
             shape = CircleShape
-        ) { Icon(Icons.Default.MyLocation, "Center Location") }
+        ) { Icon(Icons.Default.Home, "Center Office") }
     }
-}
-
-fun createProfessionalMarker(context: Context, type: String, color: Int): Drawable {
-    val size = 140
-    val bitmap = Bitmap.createBitmap(size, if(type == "truck") (size * 1.3).toInt() else size, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    if (type == "truck") {
-        val path = Path()
-        path.moveTo(size / 2f, size * 1.25f)
-        path.lineTo(size * 0.35f, size * 0.85f)
-        path.lineTo(size * 0.65f, size * 0.85f)
-        path.close()
-        paint.color = color
-        canvas.drawPath(path, paint)
-        canvas.drawCircle(size / 2f, size / 2f, size / 2.2f, paint)
-        paint.color = android.graphics.Color.WHITE
-        canvas.drawCircle(size / 2f, size / 2f, size / 2.8f, paint)
-        paint.color = color
-        val r = 6f
-        canvas.drawRoundRect(size*0.32f, size*0.42f, size*0.58f, size*0.62f, r, r, paint)
-        canvas.drawRoundRect(size*0.58f, size*0.50f, size*0.72f, size*0.62f, r, r, paint)
-        paint.color = android.graphics.Color.parseColor("#333333")
-        canvas.drawCircle(size*0.40f, size*0.65f, 6f, paint)
-        canvas.drawCircle(size*0.64f, size*0.65f, 6f, paint)
-    } else {
-        paint.color = color
-        paint.alpha = 40
-        canvas.drawCircle(size/2f, size/2f, size/2.2f, paint)
-        paint.alpha = 255
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 5f
-        canvas.drawCircle(size/2f, size/2f, size/3.2f, paint)
-        paint.style = Paint.Style.FILL
-        canvas.drawCircle(size/2f, size/2f, size/6f, paint)
-        paint.color = android.graphics.Color.WHITE
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 3f
-        canvas.drawCircle(size/2f, size/2f, size/6f, paint)
-    }
-
-    return BitmapDrawable(context.resources, bitmap)
 }

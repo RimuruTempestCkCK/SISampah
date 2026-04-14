@@ -38,6 +38,7 @@ data class PetugasActivity(
     val id: Int,
     val nama: String,
     val username: String,
+    val role: String,
     val totalTugas: Int,
     val totalLaporanSelesai: Int
 )
@@ -57,11 +58,11 @@ fun MonitorPetugasScreen() {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
                     val sql = """
-                        SELECT u.id, u.nama, u.username,
+                        SELECT u.id, u.nama, u.username, u.role,
                         (SELECT COUNT(*) FROM schedules s WHERE s.petugas_id = u.id) as total_tugas,
                         (SELECT COUNT(*) FROM trash_reports tr WHERE tr.status = 'Selesai') as total_laporan
                         FROM users u 
-                        WHERE u.role = 'PETUGAS_LPS'
+                        WHERE u.role IN ('PETUGAS_LPS', 'PETUGAS_DOKUMENTASI_LPS')
                         ORDER BY u.nama ASC
                     """.trimIndent()
                     val rs = conn.createStatement().executeQuery(sql)
@@ -71,8 +72,9 @@ fun MonitorPetugasScreen() {
                             rs.getInt("id"),
                             rs.getString("nama") ?: rs.getString("username"),
                             rs.getString("username"),
+                            rs.getString("role"),
                             rs.getInt("total_tugas"),
-                            rs.getInt("total_laporan") // Ini simulasi, idealnya ada relasi petugas di laporan
+                            rs.getInt("total_laporan")
                         ))
                     }
                     withContext(Dispatchers.Main) {
@@ -145,19 +147,33 @@ fun MonitorPetugasScreen() {
                         elevation = CardDefaults.cardElevation(2.dp)
                     ) {
                         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            val roleColor = if (petugas.role == "PETUGAS_LPS") Blue700 else Amber500
                             Box(
-                                Modifier.size(48.dp).clip(CircleShape).background(Blue700.copy(0.1f)),
+                                Modifier.size(48.dp).clip(CircleShape).background(roleColor.copy(0.1f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Engineering, null, tint = Blue700)
+                                Icon(
+                                    if (petugas.role == "PETUGAS_LPS") Icons.Default.Engineering else Icons.Default.CameraAlt, 
+                                    null, 
+                                    tint = roleColor
+                                )
                             }
                             Spacer(Modifier.width(16.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(petugas.nama, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                Text("@${petugas.username}", fontSize = 12.sp, color = Color.Gray)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("@${petugas.username}", fontSize = 12.sp, color = Color.Gray)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        if (petugas.role == "PETUGAS_LPS") "• Lapangan" else "• Dokumentasi",
+                                        fontSize = 11.sp,
+                                        color = roleColor,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
                                 Spacer(Modifier.height(8.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                    InfoBadge(label = "${petugas.totalTugas} Jadwal", color = Blue700)
+                                    InfoBadge(label = "${petugas.totalTugas} Jadwal", color = roleColor)
                                     InfoBadge(label = "Aktif", color = Green700)
                                 }
                             }
