@@ -1,6 +1,7 @@
 package com.example.sisampah.ui.screens.masyarakat
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.example.sisampah.data.MySqlHelper
 import com.google.android.gms.location.LocationServices
@@ -129,38 +131,43 @@ fun MapScreen(username: String) {
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFFF5F5F5))) {
-        // Header
-        Box(
-            Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(GreenPrimary, GreenLight))).padding(20.dp)
+        // Header - Fixed visibility issue by using Surface and zIndex
+        Surface(
+            modifier = Modifier.fillMaxWidth().zIndex(2f),
+            shadowElevation = 8.dp
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(0.2f)),
-                    contentAlignment = Alignment.Center
-                ) { Icon(Icons.Default.Map, null, tint = Color.White) }
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("Peta Live Petugas", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    Text("Monitoring Armada LPS", color = Color.White.copy(0.8f), fontSize = 12.sp)
+            Box(
+                Modifier.background(Brush.horizontalGradient(listOf(GreenPrimary, GreenLight))).padding(20.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Default.Map, null, tint = Color.White) }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("Peta Live Petugas", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text("Monitoring Armada LPS", color = Color.White.copy(0.8f), fontSize = 12.sp)
+                    }
                 }
             }
         }
 
-        // Map View
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        // Map View - Lower zIndex to prevent overlapping header
+        Box(modifier = Modifier.weight(1f).fillMaxWidth().zIndex(1f)) {
             AndroidView(
                 factory = { ctx ->
                     MapView(ctx).apply {
                         setTileSource(TileSourceFactory.MAPNIK)
                         setMultiTouchControls(true)
-                        controller.setZoom(14.5)
+                        controller.setZoom(15.0)
                         controller.setCenter(GeoPoint(-0.947, 100.417))
                     }
                 },
                 update = { mapView ->
                     mapView.overlays.clear()
                     
-                    // Marker Petugas (Mobil Hijau)
+                    // Marker Petugas (Mobil Hijau - Ukuran Diperbesar)
                     locations.forEach { loc ->
                         val point = GeoPoint(loc.latitude, loc.longitude)
                         val marker = Marker(mapView)
@@ -169,15 +176,18 @@ fun MapScreen(username: String) {
                         marker.title = loc.name
                         marker.subDescription = loc.locationName
                         
-                        // Custom Icon Mobil Hijau
-                        val icon = ContextCompat.getDrawable(context, android.R.drawable.ic_menu_directions)
-                        icon?.setTint(android.graphics.Color.parseColor("#2E7D32"))
-                        marker.icon = icon
+                        // Custom Icon Mobil Hijau dengan ukuran lebih besar (150x150)
+                        marker.icon = getResizedDrawable(
+                            context, 
+                            android.R.drawable.ic_menu_directions, 
+                            150, 
+                            android.graphics.Color.parseColor("#2E7D32")
+                        )
                         
                         mapView.overlays.add(marker)
                     }
 
-                    // Marker Saya
+                    // Marker Saya (Ukuran Diperbesar)
                     myLocation?.let {
                         val myPoint = GeoPoint(it.latitude, it.longitude)
                         val marker = Marker(mapView)
@@ -185,9 +195,12 @@ fun MapScreen(username: String) {
                         marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                         marker.title = "Lokasi Saya"
                         
-                        val icon = ContextCompat.getDrawable(context, android.R.drawable.ic_menu_mylocation)
-                        icon?.setTint(android.graphics.Color.parseColor("#1565C0"))
-                        marker.icon = icon
+                        marker.icon = getResizedDrawable(
+                            context, 
+                            android.R.drawable.ic_menu_mylocation, 
+                            150, 
+                            android.graphics.Color.parseColor("#1565C0")
+                        )
                         
                         mapView.overlays.add(marker)
                     }
@@ -205,7 +218,7 @@ fun MapScreen(username: String) {
 
         // Bottom List Summary
         Card(
-            modifier = Modifier.fillMaxWidth().height(220.dp),
+            modifier = Modifier.fillMaxWidth().height(220.dp).zIndex(2f),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(10.dp)
@@ -238,4 +251,15 @@ fun MapScreen(username: String) {
             }
         }
     }
+}
+
+// Helper function to resize and tint drawables for markers
+fun getResizedDrawable(context: Context, resId: Int, size: Int, color: Int): Drawable? {
+    val drawable = ContextCompat.getDrawable(context, resId) ?: return null
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    drawable.setBounds(0, 0, size, size)
+    drawable.setTint(color)
+    drawable.draw(canvas)
+    return BitmapDrawable(context.resources, bitmap)
 }
