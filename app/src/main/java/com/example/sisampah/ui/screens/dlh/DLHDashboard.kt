@@ -110,6 +110,7 @@ fun DLHHomeTab() {
     var visible by remember { mutableStateOf(false) }
     var totalPetugas by remember { mutableStateOf("0") }
     var totalLaporan by remember { mutableStateOf("0") }
+    var laporanSelesai by remember { mutableStateOf("0") }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -118,15 +119,23 @@ fun DLHHomeTab() {
             try {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
-                    val stmtP = conn.prepareStatement("SELECT COUNT(*) FROM users WHERE role = 'PETUGAS_LPS'")
+                    // Total Petugas LPS
+                    val stmtP = conn.prepareStatement("SELECT COUNT(*) FROM users WHERE role LIKE 'PETUGAS%'")
                     val rsP = stmtP.executeQuery()
                     if (rsP.next()) totalPetugas = rsP.getInt(1).toString()
                     rsP.close(); stmtP.close()
 
+                    // Total Semua Laporan
                     val stmtL = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports")
                     val rsL = stmtL.executeQuery()
                     if (rsL.next()) totalLaporan = rsL.getInt(1).toString()
                     rsL.close(); stmtL.close()
+
+                    // Laporan Selesai
+                    val stmtS = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports WHERE status = 'Selesai'")
+                    val rsS = stmtS.executeQuery()
+                    if (rsS.next()) laporanSelesai = rsS.getInt(1).toString()
+                    rsS.close(); stmtS.close()
 
                     conn.close()
                 }
@@ -166,15 +175,15 @@ fun DLHHomeTab() {
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatCard(Modifier.weight(1f), "Petugas LPS", totalPetugas, Icons.Default.Groups, BlueStat)
-                StatCard(Modifier.weight(1f), "Laporan Masuk", totalLaporan, Icons.Default.Report, AmberAccent)
+                StatCard(Modifier.weight(1f), "Total Laporan", totalLaporan, Icons.Default.Report, AmberAccent)
             }
         }
 
         item {
-            SectionCard(title = "Indikator Kinerja") {
-                ActivityRow(Icons.Default.Speed, "Efisiensi Pengangkutan", "85%", GreenPrimary)
-                ActivityRow(Icons.Default.AccessTime, "Rata-rata Respon", "2.4 Jam", BlueStat)
-                ActivityRow(Icons.Default.AssignmentTurnedIn, "Laporan Selesai", "92%", GreenLight)
+            SectionCard(title = "KPI & Statistik") {
+                ActivityRow(Icons.Default.TaskAlt, "Laporan Terselesaikan", "$laporanSelesai Laporan", GreenPrimary)
+                ActivityRow(Icons.Default.Speed, "Efisiensi Armada", "Optimal", BlueStat)
+                ActivityRow(Icons.Default.AssignmentTurnedIn, "Target Kebersihan Kota", "92%", GreenLight)
             }
         }
     }

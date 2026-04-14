@@ -27,6 +27,8 @@ import com.example.sisampah.ui.screens.admin.ActivityRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.*
 
 private val GreenPrimary   = Color(0xFF2E7D32)
 private val GreenLight     = Color(0xFF4CAF50)
@@ -109,6 +111,7 @@ fun PetugasHomeTab(username: String) {
     var totalJadwal by remember { mutableStateOf("0") }
     var totalLaporan by remember { mutableStateOf("0") }
     val scope = rememberCoroutineScope()
+    val today = remember { SimpleDateFormat("EEEE, d MMMM yyyy", Locale("id", "ID")).format(Date()) }
 
     LaunchedEffect(Unit) {
         visible = true
@@ -116,27 +119,28 @@ fun PetugasHomeTab(username: String) {
             try {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
-                    // Total Jadwal Saya
-                    val stmtJadwal = conn.prepareStatement("SELECT COUNT(*) FROM schedules s JOIN users u ON s.petugas_id = u.id WHERE u.username = ? OR u.nama = ?")
+                    // Total Jadwal Saya (berdasarkan petugas_id yang login)
+                    val stmtJadwal = conn.prepareStatement(
+                        "SELECT COUNT(*) FROM schedules s " +
+                        "JOIN users u ON s.petugas_id = u.id " +
+                        "WHERE u.username = ?"
+                    )
                     stmtJadwal.setString(1, username)
-                    stmtJadwal.setString(2, username)
                     val rsJadwal = stmtJadwal.executeQuery()
                     if (rsJadwal.next()) {
                         val count = rsJadwal.getInt(1).toString()
                         withContext(Dispatchers.Main) { totalJadwal = count }
                     }
-                    rsJadwal.close()
-                    stmtJadwal.close()
+                    rsJadwal.close(); stmtJadwal.close()
 
-                    // Total Laporan Aktif (Belum Selesai)
+                    // Total Laporan Darurat/Masyarakat yang belum Selesai
                     val stmtLaporan = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports WHERE status != 'Selesai'")
                     val rsLaporan = stmtLaporan.executeQuery()
                     if (rsLaporan.next()) {
                         val count = rsLaporan.getInt(1).toString()
                         withContext(Dispatchers.Main) { totalLaporan = count }
                     }
-                    rsLaporan.close()
-                    stmtLaporan.close()
+                    rsLaporan.close(); stmtLaporan.close()
 
                     conn.close()
                 }
@@ -165,7 +169,7 @@ fun PetugasHomeTab(username: String) {
                             Text("Selamat Bekerja,", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                             Text(username, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                             Spacer(Modifier.height(4.dp))
-                            Text("Petugas Lapangan LPS", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
+                            Text(today, color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
                         }
                         Icon(Icons.Default.Engineering, null, tint = Color.White.copy(0.3f), modifier = Modifier.size(56.dp))
                     }
@@ -177,16 +181,16 @@ fun PetugasHomeTab(username: String) {
             Text("Ringkasan Tugas", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatCard(Modifier.weight(1f), "Tugas Saya", totalJadwal, Icons.Default.Assignment, BlueStat)
-                StatCard(Modifier.weight(1f), "Laporan Baru", totalLaporan, Icons.Default.NewReleases, AmberAccent)
+                StatCard(Modifier.weight(1f), "Jadwal Saya", totalJadwal, Icons.Default.Assignment, BlueStat)
+                StatCard(Modifier.weight(1f), "Laporan Aktif", totalLaporan, Icons.Default.NewReleases, AmberAccent)
             }
         }
 
         item {
-            SectionCard(title = "Panduan Petugas") {
-                ActivityRow(Icons.Default.CheckCircle, "Periksa jadwal harian Anda", "Setiap Pagi", GreenPrimary)
-                ActivityRow(Icons.Default.LocationOn, "Kunjungi lokasi pengangkutan", "Sesuai Jadwal", BlueStat)
-                ActivityRow(Icons.Default.Warning, "Pantau laporan darurat warga", "Prioritas", RedAccent)
+            SectionCard(title = "Panduan Operasional") {
+                ActivityRow(Icons.Default.CheckCircle, "Periksa rute di menu Jadwal", "Harian", GreenPrimary)
+                ActivityRow(Icons.Default.LocationOn, "Kunjungi lokasi titik sampah", "Sesuai Plotting", BlueStat)
+                ActivityRow(Icons.Default.Warning, "Laporkan kendala armada", "Prioritas", RedAccent)
             }
         }
     }

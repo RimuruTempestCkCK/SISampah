@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,11 +35,33 @@ fun RegisterScreen(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+    var waterType by remember { mutableStateOf("PDAM") }
     var isLoading by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+
+    val waterOptions = listOf("PDAM", "NON-PDAM")
+
+    LaunchedEffect(Unit) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val conn = MySqlHelper.getConnection()
+                if (conn != null) {
+                    val meta = conn.metaData
+                    val rs = meta.getColumns(null, null, "users", "water_type")
+                    if (!rs.next()) {
+                        conn.createStatement().executeUpdate("ALTER TABLE users ADD COLUMN water_type VARCHAR(20) DEFAULT 'PDAM'")
+                    }
+                    rs.close()
+                    conn.close()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -110,6 +135,47 @@ fun RegisterScreen(
             singleLine = true
         )
 
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = "Jenis Pelanggan Air:",
+            modifier = Modifier.fillMaxWidth(),
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp
+        )
+
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .selectableGroup(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            waterOptions.forEach { text ->
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .selectable(
+                            selected = (text == waterType),
+                            onClick = { waterType = text },
+                            role = Role.RadioButton
+                        )
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = (text == waterType),
+                        onClick = null // null recommended for accessibility with selectable modifier
+                    )
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(32.dp))
 
         if (isLoading) {
@@ -139,12 +205,13 @@ fun RegisterScreen(
                                             }
                                         } else {
                                             val insertStmt = conn.prepareStatement(
-                                                "INSERT INTO users (username, nama, password, role) VALUES (?, ?, ?, ?)"
+                                                "INSERT INTO users (username, nama, password, role, water_type) VALUES (?, ?, ?, ?, ?)"
                                             )
                                             insertStmt.setString(1, username)
                                             insertStmt.setString(2, nama)
                                             insertStmt.setString(3, password)
                                             insertStmt.setString(4, UserRole.MASYARAKAT.name)
+                                            insertStmt.setString(5, waterType)
 
                                             val rowsAffected = insertStmt.executeUpdate()
                                             withContext(Dispatchers.Main) {

@@ -197,14 +197,6 @@ fun PaymentReportScreen() {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Summary Stats
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        StatCard(Modifier.weight(1.3f), "Total Pendapatan", "Rp ${totalPendapatan.toInt()}", Icons.Default.Payments, BlueStat)
-                        StatCard(Modifier.weight(0.7f), "User Lunas", totalLunas.toString(), Icons.Default.VerifiedUser, Green700)
-                    }
-                }
-
                 item {
                     OutlinedTextField(
                         value = searchQuery,

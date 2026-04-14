@@ -214,15 +214,7 @@ fun RekapLaporanScreen() {
                 }
 
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        StatCard(Modifier.weight(1f), "Total", totalCount.toString(), Icons.Default.Assessment, BlueStat)
-                        StatCard(Modifier.weight(1f), "Selesai", finishedCount.toString(), Icons.Default.CheckCircle, Green700)
-                        StatCard(Modifier.weight(1f), "Pending", pendingCount.toString(), Icons.Default.Pending, Amber500)
-                    }
-                }
-
-                item {
-                    Text("Daftar Laporan", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.DarkGray)
+                    Text("Daftar Laporan Masyarakat", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.DarkGray)
                 }
 
                 items(reports) { report ->

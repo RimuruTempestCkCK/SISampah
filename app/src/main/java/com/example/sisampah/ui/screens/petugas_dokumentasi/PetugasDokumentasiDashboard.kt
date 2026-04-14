@@ -27,6 +27,8 @@ import com.example.sisampah.ui.screens.admin.ActivityRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.*
 
 private val GreenPrimary   = Color(0xFF2E7D32)
 private val GreenLight     = Color(0xFF4CAF50)
@@ -109,6 +111,7 @@ fun PetugasHomeTab(username: String) {
     var totalLaporan by remember { mutableStateOf("0") }
     var laporanSelesai by remember { mutableStateOf("0") }
     val scope = rememberCoroutineScope()
+    val today = remember { SimpleDateFormat("EEEE, d MMMM yyyy", Locale("id", "ID")).format(Date()) }
 
     LaunchedEffect(Unit) {
         visible = true
@@ -116,23 +119,23 @@ fun PetugasHomeTab(username: String) {
             try {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
+                    // Hitung Semua Laporan dari Masyarakat
                     val stmtTotal = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports")
                     val rsTotal = stmtTotal.executeQuery()
                     if (rsTotal.next()) {
                         val count = rsTotal.getInt(1).toString()
                         withContext(Dispatchers.Main) { totalLaporan = count }
                     }
-                    rsTotal.close()
-                    stmtTotal.close()
+                    rsTotal.close(); stmtTotal.close()
 
+                    // Hitung Laporan yang sudah ditandai Selesai
                     val stmtSelesai = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports WHERE status = 'Selesai'")
                     val rsSelesai = stmtSelesai.executeQuery()
                     if (rsSelesai.next()) {
                         val count = rsSelesai.getInt(1).toString()
                         withContext(Dispatchers.Main) { laporanSelesai = count }
                     }
-                    rsSelesai.close()
-                    stmtSelesai.close()
+                    rsSelesai.close(); stmtSelesai.close()
 
                     conn.close()
                 }
@@ -161,7 +164,7 @@ fun PetugasHomeTab(username: String) {
                             Text("Halo,", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                             Text(username, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                             Spacer(Modifier.height(4.dp))
-                            Text("Petugas Dokumentasi LPS", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
+                            Text(today, color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
                         }
                         Icon(Icons.Default.CameraAlt, null, tint = Color.White.copy(0.3f), modifier = Modifier.size(56.dp))
                     }
@@ -170,7 +173,7 @@ fun PetugasHomeTab(username: String) {
         }
 
         item {
-            Text("Ringkasan Tugas", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text("Ringkasan Dokumentasi", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatCard(Modifier.weight(1f), "Total Laporan", totalLaporan, Icons.Default.Assessment, BlueStat)
@@ -179,10 +182,10 @@ fun PetugasHomeTab(username: String) {
         }
 
         item {
-            SectionCard(title = "Tugas Dokumentasi") {
-                ActivityRow(Icons.Default.AddAPhoto, "Ambil foto bukti angkutan", "Wajib", GreenPrimary)
-                ActivityRow(Icons.Default.CloudUpload, "Upload laporan ke sistem", "Realtime", AmberAccent)
-                ActivityRow(Icons.Default.TaskAlt, "Pastikan status terupdate", "Harian", GreenPrimary)
+            SectionCard(title = "Alur Dokumentasi LPS") {
+                ActivityRow(Icons.Default.AddAPhoto, "Pantau titik lokasi sampah", "Realtime", BlueStat)
+                ActivityRow(Icons.Default.CloudUpload, "Verifikasi angkutan petugas", "Harian", GreenPrimary)
+                ActivityRow(Icons.Default.FactCheck, "Finalisasi status laporan", "Wajib", AmberAccent)
             }
         }
     }

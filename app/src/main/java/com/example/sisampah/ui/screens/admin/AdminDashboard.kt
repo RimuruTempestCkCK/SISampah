@@ -27,6 +27,8 @@ import com.example.sisampah.data.MySqlHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.*
 
 // ─── Warna tema ────────────────────────────────────────────────────────────────
 private val GreenPrimary   = Color(0xFF2E7D32)
@@ -120,7 +122,12 @@ fun AdminDashboard(onLogout: () -> Unit) {
 fun HomeTab() {
     var visible by remember { mutableStateOf(false) }
     var totalUser by remember { mutableStateOf("0") }
+    var totalLaporan by remember { mutableStateOf("0") }
+    var totalJadwal by remember { mutableStateOf("0") }
+    var totalPetugas by remember { mutableStateOf("0") }
+    
     val scope = rememberCoroutineScope()
+    val today = remember { SimpleDateFormat("EEEE, d MMMM yyyy", Locale("id", "ID")).format(Date()) }
 
     LaunchedEffect(Unit) { 
         visible = true 
@@ -128,14 +135,30 @@ fun HomeTab() {
             try {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
-                    val stmt = conn.prepareStatement("SELECT COUNT(*) FROM users")
-                    val rs = stmt.executeQuery()
-                    if (rs.next()) {
-                        val count = rs.getInt(1).toString()
-                        withContext(Dispatchers.Main) { totalUser = count }
-                    }
-                    rs.close()
-                    stmt.close()
+                    // Total Users
+                    val stmtU = conn.prepareStatement("SELECT COUNT(*) FROM users")
+                    val rsU = stmtU.executeQuery()
+                    if (rsU.next()) { totalUser = rsU.getInt(1).toString() }
+                    rsU.close(); stmtU.close()
+
+                    // Laporan Baru (Belum Selesai)
+                    val stmtL = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports WHERE status != 'Selesai'")
+                    val rsL = stmtL.executeQuery()
+                    if (rsL.next()) { totalLaporan = rsL.getInt(1).toString() }
+                    rsL.close(); stmtL.close()
+
+                    // Jadwal Aktif
+                    val stmtJ = conn.prepareStatement("SELECT COUNT(*) FROM schedules")
+                    val rsJ = stmtJ.executeQuery()
+                    if (rsJ.next()) { totalJadwal = rsJ.getInt(1).toString() }
+                    rsJ.close(); stmtJ.close()
+
+                    // Petugas Aktif
+                    val stmtP = conn.prepareStatement("SELECT COUNT(*) FROM users WHERE role LIKE 'PETUGAS%'")
+                    val rsP = stmtP.executeQuery()
+                    if (rsP.next()) { totalPetugas = rsP.getInt(1).toString() }
+                    rsP.close(); stmtP.close()
+
                     conn.close()
                 }
             } catch (e: Exception) {
@@ -166,7 +189,7 @@ fun HomeTab() {
                             Text("Selamat Datang,", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                             Text("Admin Lapor-Sampah", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                             Spacer(Modifier.height(4.dp))
-                            Text("Jumat, 27 Maret 2026", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
+                            Text(today, color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
                         }
                         Icon(Icons.Default.AdminPanelSettings, null, tint = Color.White.copy(0.5f), modifier = Modifier.size(56.dp))
                     }
@@ -180,32 +203,30 @@ fun HomeTab() {
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatCard(Modifier.weight(1f), "Total User",    totalUser,  Icons.Default.People,         BlueStat)
-                StatCard(Modifier.weight(1f), "Laporan Baru",  "38",   Icons.Default.ReportProblem,  AmberAccent)
+                StatCard(Modifier.weight(1f), "Laporan Aktif",  totalLaporan,   Icons.Default.ReportProblem,  AmberAccent)
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatCard(Modifier.weight(1f), "Jadwal Aktif",  "12",   Icons.Default.EventAvailable, GreenPrimary)
-                StatCard(Modifier.weight(1f), "Petugas Aktif", "9",    Icons.Default.Badge,          Color(0xFF6A1B9A))
+                StatCard(Modifier.weight(1f), "Jadwal Aktif",  totalJadwal,   Icons.Default.EventAvailable, GreenPrimary)
+                StatCard(Modifier.weight(1f), "Total Petugas", totalPetugas,    Icons.Default.Badge,          Color(0xFF6A1B9A))
             }
         }
 
-        // ── Progress pengangkutan bulan ini ──
+        // ── Progress pengangkutan bulan ini (Contoh Statis tapi lebih relevan) ──
         item {
-            SectionCard(title = "Pengangkutan Bulan Ini") {
-                ProgressRow("Blok A",   0.85f, GreenLight)
-                ProgressRow("Blok B",   0.62f, AmberAccent)
-                ProgressRow("Blok C",   0.40f, RedAccent)
-                ProgressRow("Blok D",   0.90f, GreenPrimary)
+            SectionCard(title = "Pantauan Wilayah") {
+                ProgressRow("Anduring",   0.85f, GreenLight)
+                ProgressRow("Kuranji",   0.62f, AmberAccent)
+                ProgressRow("Pauh",   0.40f, RedAccent)
             }
         }
 
-        // ── Aktivitas terbaru ──
+        // ── Aktivitas terbaru (Instruksi Kerja) ──
         item {
-            SectionCard(title = "Aktivitas Terbaru") {
-                ActivityRow(Icons.Default.PersonAdd,     "User baru didaftarkan",   "5 menit lalu",  GreenPrimary)
-                ActivityRow(Icons.Default.ReportProblem, "Laporan #1089 masuk",      "12 menit lalu", AmberAccent)
-                ActivityRow(Icons.Default.EditCalendar,  "Jadwal Blok B diperbarui", "1 jam lalu",    BlueStat)
-                ActivityRow(Icons.Default.DeleteForever, "User #48 dinonaktifkan",   "2 jam lalu",    RedAccent)
+            SectionCard(title = "Tugas Prioritas Admin") {
+                ActivityRow(Icons.Default.VerifiedUser,     "Validasi Pembayaran Warga",   "Harian", GreenPrimary)
+                ActivityRow(Icons.Default.EditNotifications, "Update Jadwal Petugas",      "Mingguan", AmberAccent)
+                ActivityRow(Icons.Default.ManageAccounts,  "Monitor Kinerja Petugas", "Realtime",    BlueStat)
             }
         }
     }
@@ -285,9 +306,6 @@ fun ActivityRow(icon: ImageVector, title: String, time: String, color: Color) {
         }
     }
 }
-
-
-
 
 @Composable
 fun ScheduleInfoRow(icon: ImageVector, label: String, value: String) {

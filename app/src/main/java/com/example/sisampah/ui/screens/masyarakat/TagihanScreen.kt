@@ -63,6 +63,7 @@ fun TagihanScreen(username: String) {
     var tagihanList by remember { mutableStateOf<List<Tagihan>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var userWaterType by remember { mutableStateOf("PDAM") }
     
     var selectedTagihanId by remember { mutableIntStateOf(-1) }
 
@@ -78,13 +79,14 @@ fun TagihanScreen(username: String) {
             try {
                 val conn = MySqlHelper.getConnection()
                 if (conn != null) {
-                    // 1. Get User ID for VA
                     var userId: Int? = null
-                    val userStmt = conn.prepareStatement("SELECT id FROM users WHERE username = ?")
+                    var waterType = "PDAM"
+                    val userStmt = conn.prepareStatement("SELECT id, water_type FROM users WHERE username = ?")
                     userStmt.setString(1, username)
                     val userRs = userStmt.executeQuery()
                     if (userRs.next()) {
                         userId = userRs.getInt("id")
+                        waterType = userRs.getString("water_type") ?: "PDAM"
                     }
                     userRs.close()
                     userStmt.close()
@@ -99,9 +101,8 @@ fun TagihanScreen(username: String) {
                     }
 
                     val currentVa = "8888${String.format(Locale.US, "%04d", userId)}"
+                    val amount = if (waterType == "PDAM") 25000.0 else 15000.0
 
-                    // 2. Ensure all months exist for this user
-                    val stmt = conn.createStatement()
                     bulanList.forEach { bulan ->
                         val checkStmt = conn.prepareStatement("SELECT id FROM payments WHERE bulan = ? AND username = ?")
                         checkStmt.setString(1, bulan)
@@ -111,16 +112,22 @@ fun TagihanScreen(username: String) {
                             val insertStmt = conn.prepareStatement("INSERT INTO payments (username, bulan, jumlah, status) VALUES (?, ?, ?, ?)")
                             insertStmt.setString(1, username)
                             insertStmt.setString(2, bulan)
-                            insertStmt.setDouble(3, 25000.0)
+                            insertStmt.setDouble(3, amount)
                             insertStmt.setString(4, "BELUM BAYAR")
                             insertStmt.executeUpdate()
                             insertStmt.close()
+                        } else {
+                            val existingId = checkRs.getInt("id")
+                            val updateAmountStmt = conn.prepareStatement("UPDATE payments SET jumlah = ? WHERE id = ? AND status = 'BELUM BAYAR'")
+                            updateAmountStmt.setDouble(1, amount)
+                            updateAmountStmt.setInt(2, existingId)
+                            updateAmountStmt.executeUpdate()
+                            updateAmountStmt.close()
                         }
                         checkRs.close()
                         checkStmt.close()
                     }
 
-                    // 3. Fetch data
                     val query = "SELECT * FROM payments WHERE username = ? AND bulan LIKE '%2026' ORDER BY FIELD(bulan, 'Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026', 'Juli 2026', 'Agustus 2026', 'September 2026', 'Oktober 2026', 'November 2026', 'Desember 2026')"
                     val fetchStmt = conn.prepareStatement(query)
                     fetchStmt.setString(1, username)
@@ -141,6 +148,7 @@ fun TagihanScreen(username: String) {
                     conn.close()
                     withContext(Dispatchers.Main) { 
                         tagihanList = list
+                        userWaterType = waterType
                         isLoading = false 
                         errorMsg = null
                     }
@@ -216,22 +224,7 @@ fun TagihanScreen(username: String) {
     }
 
     LaunchedEffect(Unit) {
-        // Migration: ensure 'username' column exists in payments
-        scope.launch(Dispatchers.IO) {
-            try {
-                val conn = MySqlHelper.getConnection()
-                if (conn != null) {
-                    val meta = conn.metaData
-                    val rs = meta.getColumns(null, null, "payments", "username")
-                    if (!rs.next()) {
-                        conn.createStatement().executeUpdate("ALTER TABLE payments ADD COLUMN username VARCHAR(50) AFTER id")
-                    }
-                    rs.close()
-                    conn.close()
-                }
-            } catch (e: Exception) {}
-            loadData()
-        }
+        loadData()
     }
 
     Column(
@@ -309,7 +302,7 @@ fun TagihanScreen(username: String) {
                 }
             } else {
                 items(tagihanList) { tagihan ->
-                    TagihanItem(tagihan) {
+                    TagihanItem(tagihan, userWaterType) {
                         if (tagihan.status.uppercase() == "BELUM BAYAR") {
                             focusManager.clearFocus()
                             selectedTagihanId = tagihan.id
@@ -323,16 +316,17 @@ fun TagihanScreen(username: String) {
 }
 
 @Composable
-fun TagihanItem(tagihan: Tagihan, onUploadBukti: () -> Unit) {
+fun TagihanItem(tagihan: Tagihan, waterType: String, onUploadBukti: () -> Unit) {
     val status = tagihan.status.uppercase()
     val isLunas = status == "LUNAS"
     val isWaiting = status == "MENUNGGU"
     val isBelumBayar = status == "BELUM BAYAR"
+    val isPdam = waterType == "PDAM"
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (isBelumBayar) Modifier.clickable { onUploadBukti() } else Modifier),
+            .then(if (isBelumBayar && !isPdam) Modifier.clickable { onUploadBukti() } else Modifier),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(2.dp)
@@ -345,6 +339,7 @@ fun TagihanItem(tagihan: Tagihan, onUploadBukti: () -> Unit) {
                             when {
                                 isLunas -> GreenSurface
                                 isWaiting -> Blue700.copy(0.1f)
+                                isBelumBayar && isPdam -> GreenSurface
                                 else -> RedAccent.copy(0.1f)
                             }
                         ),
@@ -354,33 +349,38 @@ fun TagihanItem(tagihan: Tagihan, onUploadBukti: () -> Unit) {
                             when {
                                 isLunas -> Icons.Default.CheckCircle
                                 isWaiting -> Icons.Default.HourglassEmpty
+                                isBelumBayar && isPdam -> Icons.Default.Sync
                                 else -> Icons.Default.ReceiptLong
                             }, 
                             null, 
-                            tint = when {
-                                isLunas -> Green700
-                                isWaiting -> Blue700
-                                else -> RedAccent
-                            }, 
+                            tint = if (isLunas || (isBelumBayar && isPdam)) Green700 else if (isWaiting) Blue700 else RedAccent, 
                             modifier = Modifier.size(20.dp)
                         )
                     }
                     Spacer(Modifier.width(12.dp))
                     Column {
-                        Text(tagihan.bulan, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (isLunas) Green700 else Color.DarkGray)
+                        Text(tagihan.bulan, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (isLunas || (isBelumBayar && isPdam)) Green700 else Color.DarkGray)
                         Text("Iuran Kebersihan", fontSize = 12.sp, color = Color.Gray)
                     }
                 }
-                Text("Rp ${tagihan.jumlah.toInt()}", fontWeight = FontWeight.Bold, color = if (isLunas) Green700 else RedAccent, fontSize = 17.sp)
+                Text("Rp ${tagihan.jumlah.toInt()}", fontWeight = FontWeight.Bold, color = if (isLunas || (isBelumBayar && isPdam)) Green700 else RedAccent, fontSize = 17.sp)
             }
             
             Divider(Modifier.padding(vertical = 16.dp), thickness = 0.5.dp, color = Color.LightGray)
             
             if (isBelumBayar) {
-                Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                    Text("No. Virtual Account (VA):", fontSize = 12.sp, color = Color.Gray)
-                    Text(tagihan.vaNumber, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
-                    Text("Bank Transfer (Mandiri/BCA)", fontSize = 11.sp, color = Color.Gray)
+                if (isPdam) {
+                    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                        Text("Metode Pembayaran:", fontSize = 12.sp, color = Color.Gray)
+                        Text("Terintegrasi PDAM", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Green700)
+                        Text("Iuran otomatis masuk ke tagihan PDAM Anda", fontSize = 11.sp, color = Color.Gray)
+                    }
+                } else {
+                    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                        Text("No. Virtual Account (VA):", fontSize = 12.sp, color = Color.Gray)
+                        Text(tagihan.vaNumber, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
+                        Text("Bank Transfer (Mandiri/BCA)", fontSize = 11.sp, color = Color.Gray)
+                    }
                 }
             }
 
@@ -389,16 +389,18 @@ fun TagihanItem(tagihan: Tagihan, onUploadBukti: () -> Unit) {
                     color = when {
                         isLunas -> Green700.copy(0.1f)
                         isWaiting -> Blue700.copy(0.1f)
+                        isBelumBayar && isPdam -> Green700.copy(0.1f)
                         else -> Amber500.copy(0.1f)
                     },
                     shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
-                        status,
+                        if (isBelumBayar && isPdam) "VIA PDAM" else status,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         color = when {
                             isLunas -> Green700
                             isWaiting -> Blue700
+                            isBelumBayar && isPdam -> Green700
                             else -> Amber500
                         },
                         fontSize = 10.sp,
@@ -407,10 +409,18 @@ fun TagihanItem(tagihan: Tagihan, onUploadBukti: () -> Unit) {
                 }
 
                 if (isBelumBayar) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Klik untuk Upload Bukti", fontSize = 11.sp, color = Green700, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Default.CloudUpload, null, tint = Green700, modifier = Modifier.size(16.dp))
+                    if (isPdam) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Otomatis via PDAM", fontSize = 11.sp, color = Green700, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Default.Info, null, tint = Green700, modifier = Modifier.size(16.dp))
+                        }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Klik untuk Upload Bukti", fontSize = 11.sp, color = Green700, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Default.CloudUpload, null, tint = Green700, modifier = Modifier.size(16.dp))
+                        }
                     }
                 } else if (isWaiting) {
                     Text("Menunggu Konfirmasi Admin", fontSize = 11.sp, color = Blue700, fontWeight = FontWeight.Medium)

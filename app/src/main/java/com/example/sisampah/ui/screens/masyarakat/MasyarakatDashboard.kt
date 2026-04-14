@@ -21,6 +21,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.sisampah.data.MySqlHelper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // ─── Warna tema ────────────────────────────────────────────────────────────────
 private val GreenPrimary   = Color(0xFF2E7D32)
@@ -103,7 +107,73 @@ fun MasyarakatDashboard(username: String, onLogout: () -> Unit) {
 @Composable
 fun HomeTab(username: String) {
     var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { visible = true }
+    var totalLaporan by remember { mutableStateOf("0") }
+    var statusAktif by remember { mutableStateOf("0") }
+    var jadwalHari by remember { mutableStateOf("Belum ada jadwal") }
+    var jadwalJam by remember { mutableStateOf("-") }
+    
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        visible = true
+        scope.launch(Dispatchers.IO) {
+            try {
+                val conn = MySqlHelper.getConnection()
+                if (conn != null) {
+                    // Cari Nama Asli dari username
+                    var userRealName = username
+                    val stmtUser = conn.prepareStatement("SELECT nama FROM users WHERE username = ?")
+                    stmtUser.setString(1, username)
+                    val rsUser = stmtUser.executeQuery()
+                    if (rsUser.next()) {
+                        userRealName = rsUser.getString("nama") ?: username
+                    }
+                    rsUser.close()
+                    stmtUser.close()
+
+                    // Hitung Laporan Saya
+                    val stmtLaporan = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports WHERE reporterName = ?")
+                    stmtLaporan.setString(1, userRealName)
+                    val rsLaporan = stmtLaporan.executeQuery()
+                    if (rsLaporan.next()) {
+                        val count = rsLaporan.getInt(1).toString()
+                        withContext(Dispatchers.Main) { totalLaporan = count }
+                    }
+                    rsLaporan.close()
+                    stmtLaporan.close()
+
+                    // Hitung Status Aktif (Belum Selesai)
+                    val stmtAktif = conn.prepareStatement("SELECT COUNT(*) FROM trash_reports WHERE reporterName = ? AND status != 'Selesai'")
+                    stmtAktif.setString(1, userRealName)
+                    val rsAktif = stmtAktif.executeQuery()
+                    if (rsAktif.next()) {
+                        val count = rsAktif.getInt(1).toString()
+                        withContext(Dispatchers.Main) { statusAktif = count }
+                    }
+                    rsAktif.close()
+                    stmtAktif.close()
+
+                    // Ambil Jadwal Terdekat (Limit 1)
+                    val stmtJadwal = conn.prepareStatement("SELECT hari, jam FROM schedules LIMIT 1")
+                    val rsJadwal = stmtJadwal.executeQuery()
+                    if (rsJadwal.next()) {
+                        val hari = rsJadwal.getString("hari")
+                        val jam = rsJadwal.getString("jam")
+                        withContext(Dispatchers.Main) {
+                            jadwalHari = hari
+                            jadwalJam = "Pukul $jam WIB"
+                        }
+                    }
+                    rsJadwal.close()
+                    stmtJadwal.close()
+
+                    conn.close()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -136,8 +206,8 @@ fun HomeTab(username: String) {
             Text("Ringkasan Info", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatCard(Modifier.weight(1f), "Laporan Saya", "5", Icons.Default.Description, BlueStat)
-                StatCard(Modifier.weight(1f), "Status Aktif", "1", Icons.Default.Pending, AmberAccent)
+                StatCard(Modifier.weight(1f), "Laporan Saya", totalLaporan, Icons.Default.Description, BlueStat)
+                StatCard(Modifier.weight(1f), "Status Aktif", statusAktif, Icons.Default.Pending, AmberAccent)
             }
         }
 
@@ -150,8 +220,8 @@ fun HomeTab(username: String) {
                     ) { Icon(Icons.Default.Event, null, tint = GreenPrimary) }
                     Spacer(Modifier.width(12.dp))
                     Column {
-                        Text("Senin & Kamis", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text("Pukul 08:00 - 10:00 WIB", fontSize = 12.sp, color = Color.Gray)
+                        Text(jadwalHari, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(jadwalJam, fontSize = 12.sp, color = Color.Gray)
                     }
                 }
             }
