@@ -22,7 +22,7 @@ object MySqlHelper {
     suspend fun getConnection(): Connection? = withContext(Dispatchers.IO) {
         try {
             Class.forName("com.mysql.jdbc.Driver")
-            Log.d("MySQL", "Menghubungkan ke Cloud: $URL")
+            Log.d("MyS  QL", "Menghubungkan ke Cloud: $URL")
             val conn = DriverManager.getConnection(URL, USER, PASS)
             Log.d("MySQL", "Koneksi Cloud Berhasil!")
             conn

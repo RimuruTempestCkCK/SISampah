@@ -603,8 +603,7 @@ private fun ScheduleFormDialog(
         confirmButton = {
             Button(
                 onClick = { if (lokasi.isNotBlank() && jam.isNotBlank()) onSave(lokasi, hari, jam, selectedPetugasId) },
-                colors  = ButtonDefaults.buttonColors(containerColor = Green700),
-                shape   = RoundedCornerShape(8.dp)
+                colors  = ButtonDefaults.buttonColors(containerColor = Green700)
             ) {
                 Icon(Icons.Default.Save, null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
@@ -613,8 +612,7 @@ private fun ScheduleFormDialog(
         },
         dismissButton = {
             OutlinedButton(
-                onClick = onDismiss,
-                shape   = RoundedCornerShape(8.dp)
+                onClick = onDismiss
             ) { Text("Batal") }
         },
         shape = RoundedCornerShape(16.dp)

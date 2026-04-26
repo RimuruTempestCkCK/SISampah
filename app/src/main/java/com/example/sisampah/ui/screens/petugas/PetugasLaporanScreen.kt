@@ -79,7 +79,7 @@ fun PetugasLaporanScreen() {
         }
     }
 
-    fun loadData() {
+    fun loadData(showToast: Boolean = false) {
         isLoading = true
         scope.launch(Dispatchers.IO) {
             try {
@@ -109,6 +109,7 @@ fun PetugasLaporanScreen() {
                     withContext(Dispatchers.Main) {
                         reports = list
                         isLoading = false
+                        if (showToast) Toast.makeText(context, "Berhasil: Laporan diperbarui", Toast.LENGTH_SHORT).show()
                     }
                     conn.close()
                 }
@@ -215,13 +216,13 @@ fun PetugasLaporanScreen() {
                     Text("Laporan Masyarakat", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                     Text("Pantau laporan sampah di lingkungan", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                 }
-                IconButton(onClick = { loadData() }) {
+                IconButton(onClick = { loadData(true) }) {
                     Icon(Icons.Default.Refresh, null, tint = Color.White, modifier = Modifier.size(28.dp))
                 }
             }
         }
 
-        if (isLoading) {
+        if (isLoading && reports.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Green700)
             }
@@ -309,6 +310,14 @@ fun MapWebView(petugasLat: Double, petugasLng: Double, reportLocation: String) {
                 loadDataWithBaseURL("https://maps.google.com", htmlData, "text/html", "UTF-8", null)
             }
         },
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize(),
+        update = { webView ->
+            val lastLoc = webView.tag as? String
+            val currentLocStr = "$petugasLat,$petugasLng"
+            if (lastLoc != currentLocStr) {
+                webView.tag = currentLocStr
+                webView.loadDataWithBaseURL("https://maps.google.com", htmlData, "text/html", "UTF-8", null)
+            }
+        }
     )
 }

@@ -161,8 +161,7 @@ fun RegisterScreen(
                             role = Role.RadioButton
                         )
                         .padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                    verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(
                         selected = (text == waterType),
                         onClick = null // null recommended for accessibility with selectable modifier
@@ -186,9 +185,9 @@ fun RegisterScreen(
                     focusManager.clearFocus()
                     when {
                         nama.isEmpty() || username.isEmpty() || password.isEmpty() || confirmPassword.isEmpty() ->
-                            Toast.makeText(context, "Isi semua bidang!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Peringatan: Isi semua bidang!", Toast.LENGTH_SHORT).show()
                         password != confirmPassword ->
-                            Toast.makeText(context, "Password tidak cocok!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Gagal: Password tidak cocok!", Toast.LENGTH_SHORT).show()
                         else -> {
                             isLoading = true
                             scope.launch(Dispatchers.IO) {
@@ -201,7 +200,7 @@ fun RegisterScreen(
 
                                         if (resultSet.next()) {
                                             withContext(Dispatchers.Main) {
-                                                Toast.makeText(context, "Username sudah digunakan!", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "Username '$username' sudah digunakan!", Toast.LENGTH_SHORT).show()
                                             }
                                         } else {
                                             val insertStmt = conn.prepareStatement(
@@ -216,17 +215,17 @@ fun RegisterScreen(
                                             val rowsAffected = insertStmt.executeUpdate()
                                             withContext(Dispatchers.Main) {
                                                 if (rowsAffected > 0) {
-                                                    Toast.makeText(context, "Registrasi Berhasil!", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, "Berhasil: Akun berhasil terdaftar!", Toast.LENGTH_SHORT).show()
                                                     onRegisterSuccess()
                                                 } else {
-                                                    Toast.makeText(context, "Registrasi Gagal!", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, "Gagal: Terjadi kesalahan pendaftaran!", Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         }
                                         conn.close()
                                     } else {
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, "Gagal terhubung ke database!", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Gagal: Terputus dari server database!", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 } catch (e: Exception) {

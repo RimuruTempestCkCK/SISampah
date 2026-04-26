@@ -68,7 +68,6 @@ fun PetugasUpdateLaporan() {
         object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 result.lastLocation?.let { 
-                    // Update lokasi jika bergeser > 3 meter
                     if (currentUserLocation == null || it.distanceTo(currentUserLocation!!) > 3f) {
                         currentUserLocation = it 
                     }
@@ -193,14 +192,17 @@ fun PetugasUpdateLaporan() {
                 }
                 IconButton(onClick = { 
                     isLoading = true
-                    loadData(context, scope) { list -> reports = list; isLoading = false }
+                    loadData(context, scope) { list -> 
+                        reports = list; isLoading = false 
+                        Toast.makeText(context, "Berhasil: Laporan diperbarui", Toast.LENGTH_SHORT).show()
+                    }
                 }) {
                     Icon(Icons.Default.Refresh, null, tint = Color.White, modifier = Modifier.size(28.dp))
                 }
             }
         }
 
-        if (isLoading) {
+        if (isLoading && reports.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Green700)
             }
@@ -261,12 +263,19 @@ private fun loadData(context: Context, scope: kotlinx.coroutines.CoroutineScope,
         try {
             val conn = MySqlHelper.getConnection()
             if (conn != null) {
-                val rs = conn.createStatement().executeQuery("SELECT * FROM trash_reports ORDER BY id DESC")
+                val query = """
+                    SELECT tr.*, u.nama as real_name 
+                    FROM trash_reports tr
+                    LEFT JOIN users u ON tr.reporterName = u.username
+                    ORDER BY tr.id DESC
+                """.trimIndent()
+                val rs = conn.createStatement().executeQuery(query)
                 val list = mutableListOf<TrashReport>()
                 while (rs.next()) {
+                    val realName = rs.getString("real_name") ?: rs.getString("reporterName")
                     list.add(TrashReport(
                         id = rs.getInt("id").toString(),
-                        reporterName = rs.getString("reporterName") ?: "Unknown",
+                        reporterName = realName ?: "Unknown",
                         location = rs.getString("location") ?: "",
                         description = rs.getString("description") ?: "",
                         status = rs.getString("status") ?: "Menunggu",
@@ -292,7 +301,7 @@ private fun updateStatus(id: String, newStatus: String, context: Context, scope:
                 stmt.executeUpdate()
                 conn.close()
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Status diperbarui", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Berhasil: Laporan ditandai Selesai!", Toast.LENGTH_SHORT).show()
                     onComplete()
                 }
             }
@@ -305,7 +314,6 @@ fun MapWebView(petugasLat: Double, petugasLng: Double, reportLocation: String) {
     val encodedAddr = Uri.encode(reportLocation)
     val mapUrl = "https://maps.google.com/maps?saddr=$petugasLat,$petugasLng&daddr=$encodedAddr&output=embed"
     
-    // Membungkus URL ke dalam Iframe agar tidak error
     val htmlData = """
         <html>
         <body style="margin:0;padding:0;">
@@ -335,7 +343,6 @@ fun MapWebView(petugasLat: Double, petugasLng: Double, reportLocation: String) {
         },
         modifier = Modifier.fillMaxSize(),
         update = { webView ->
-            // Update rute jika lokasi berubah (disimpan di tag untuk perbandingan)
             val lastLoc = webView.tag as? String
             val currentLocStr = "$petugasLat,$petugasLng"
             if (lastLoc != currentLocStr) {

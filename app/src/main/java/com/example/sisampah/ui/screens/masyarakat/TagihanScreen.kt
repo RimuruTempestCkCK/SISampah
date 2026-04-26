@@ -73,7 +73,7 @@ fun TagihanScreen(username: String) {
         "September 2026", "Oktober 2026", "November 2026", "Desember 2026"
     )
 
-    fun loadData() {
+    fun loadData(showToast: Boolean = false) {
         isLoading = true
         scope.launch(Dispatchers.IO) {
             try {
@@ -93,7 +93,7 @@ fun TagihanScreen(username: String) {
 
                     if (userId == null) {
                         withContext(Dispatchers.Main) { 
-                            errorMsg = "User tidak ditemukan"
+                            errorMsg = "Peringatan: User tidak ditemukan"
                             isLoading = false 
                         }
                         conn.close()
@@ -151,10 +151,11 @@ fun TagihanScreen(username: String) {
                         userWaterType = waterType
                         isLoading = false 
                         errorMsg = null
+                        if (showToast) Toast.makeText(context, "Berhasil: Data tagihan diperbarui", Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     withContext(Dispatchers.Main) { 
-                        errorMsg = "Gagal terhubung ke database"
+                        errorMsg = "Gagal: Terputus dari database"
                         isLoading = false 
                     }
                 }
@@ -207,13 +208,13 @@ fun TagihanScreen(username: String) {
                         stmt.executeUpdate()
                         conn.close()
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "Bukti pembayaran terkirim! Menunggu konfirmasi admin.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Berhasil: Bukti pembayaran terkirim! Menunggu konfirmasi admin.", Toast.LENGTH_LONG).show()
                             loadData()
                         }
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) { 
-                        Toast.makeText(context, "Gagal upload: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Gagal: ${e.message}", Toast.LENGTH_SHORT).show()
                         isLoading = false
                     }
                 } finally {
@@ -248,7 +249,7 @@ fun TagihanScreen(username: String) {
                 }
                 IconButton(onClick = { 
                     focusManager.clearFocus()
-                    loadData() 
+                    loadData(true) 
                 }) {
                     Icon(Icons.Default.Refresh, null, tint = Color.White, modifier = Modifier.size(28.dp))
                 }
@@ -277,13 +278,13 @@ fun TagihanScreen(username: String) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (isLoading) {
+            if (isLoading && tagihanList.isEmpty()) {
                 item { 
                     Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { 
                         CircularProgressIndicator(color = Green700) 
                     } 
                 }
-            } else if (tagihanList.isEmpty()) {
+            } else if (tagihanList.isEmpty() && !isLoading) {
                 item { 
                     Card(
                         Modifier.fillMaxWidth(),

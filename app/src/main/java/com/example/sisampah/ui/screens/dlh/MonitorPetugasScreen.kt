@@ -46,12 +46,13 @@ data class PetugasActivity(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MonitorPetugasScreen() {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var petugasList by remember { mutableStateOf<List<PetugasActivity>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
-    fun loadData() {
+    fun loadData(showToast: Boolean = false) {
         isLoading = true
         scope.launch(Dispatchers.IO) {
             try {
@@ -81,6 +82,7 @@ fun MonitorPetugasScreen() {
                         petugasList = list
                         isLoading = false
                         errorMsg = null
+                        if (showToast) Toast.makeText(context, "Berhasil: Data petugas diperbarui", Toast.LENGTH_SHORT).show()
                     }
                     conn.close()
                 }
@@ -108,7 +110,7 @@ fun MonitorPetugasScreen() {
                     Text("Monitor Petugas LPS", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                     Text("Pantau performa petugas di lapangan", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                 }
-                IconButton(onClick = { loadData() }) {
+                IconButton(onClick = { loadData(true) }) {
                     Icon(Icons.Default.Refresh, null, tint = Color.White, modifier = Modifier.size(28.dp))
                 }
             }
@@ -130,7 +132,7 @@ fun MonitorPetugasScreen() {
             }
         }
 
-        if (isLoading) {
+        if (isLoading && petugasList.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Green700)
             }

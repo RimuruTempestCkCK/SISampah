@@ -108,13 +108,13 @@ fun PaymentValidationScreen() {
                     stmt.executeUpdate()
                     conn.close()
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Status diperbarui menjadi $newStatus", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Berhasil: Status diperbarui menjadi $newStatus", Toast.LENGTH_SHORT).show()
                         loadData()
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Gagal update: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Gagal memperbarui data: ${e.message}", Toast.LENGTH_SHORT).show()
                     isLoading = false
                 }
             }

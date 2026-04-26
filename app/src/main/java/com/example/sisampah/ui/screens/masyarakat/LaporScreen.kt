@@ -67,7 +67,6 @@ fun LaporScreen(currentUsername: String = "Warga") {
     val focusManager = LocalFocusManager.current
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    // Launcher untuk Galeri
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -82,7 +81,6 @@ fun LaporScreen(currentUsername: String = "Warga") {
         }
     }
 
-    // Launcher untuk Kamera
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicturePreview()
     ) { bitmap: Bitmap? ->
@@ -119,7 +117,6 @@ fun LaporScreen(currentUsername: String = "Warga") {
         }
     }
 
-    // Fungsi Kompresi dan Base64
     fun bitmapToBase64(bitmap: Bitmap): String? {
         return try {
             val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
@@ -301,7 +298,7 @@ fun LaporScreen(currentUsername: String = "Warga") {
                             onClick = {
                                 focusManager.clearFocus()
                                 if (location.isBlank() || description.isBlank() || capturedBitmap == null) {
-                                    errorMsg = "Harap lengkapi semua data dan foto!"
+                                    errorMsg = "Peringatan: Harap lengkapi semua data dan foto!"
                                     return@Button
                                 }
                                 isLoading = true
@@ -319,13 +316,13 @@ fun LaporScreen(currentUsername: String = "Warga") {
                                             stmt.setString(5, imageBase64)
                                             stmt.executeUpdate()
                                             withContext(Dispatchers.Main) {
-                                                Toast.makeText(context, "Laporan Terkirim!", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "Berhasil: Laporan Anda telah terkirim!", Toast.LENGTH_SHORT).show()
                                                 location = ""; description = ""; capturedBitmap = null; errorMsg = null
                                             }
                                             conn.close()
                                         }
                                     } catch (e: Exception) {
-                                        withContext(Dispatchers.Main) { errorMsg = "Error: ${e.message}" }
+                                        withContext(Dispatchers.Main) { errorMsg = "Gagal: ${e.message}" }
                                     } finally {
                                         withContext(Dispatchers.Main) { isLoading = false }
                                     }
@@ -372,7 +369,7 @@ private fun getCurrentLocation(
                 onLocationReceived("${loc.latitude}, ${loc.longitude}")
             }
         } else {
-            Toast.makeText(context, "Gagal mendapatkan lokasi GPS. Pastikan GPS aktif.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Peringatan: Gagal mendapatkan lokasi GPS. Pastikan GPS aktif.", Toast.LENGTH_SHORT).show()
         }
     }
 }
