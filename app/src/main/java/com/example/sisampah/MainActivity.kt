@@ -1,10 +1,12 @@
 package com.example.sisampah
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -33,6 +35,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
+    val context = LocalContext.current
     var loggedInUsername by remember { mutableStateOf("") }
 
     NavHost(navController = navController, startDestination = "login") {
@@ -72,6 +75,7 @@ fun AppNavigation() {
             MasyarakatDashboard(
                 username = loggedInUsername,
                 onLogout = {
+                    Toast.makeText(context, "Berhasil: Anda telah keluar", Toast.LENGTH_SHORT).show()
                     navController.navigate("login") {
                         popUpTo("masyarakat_dashboard") { inclusive = true }
                     }
@@ -83,6 +87,7 @@ fun AppNavigation() {
             PetugasDashboard(
                 username = loggedInUsername,
                 onLogout = {
+                    Toast.makeText(context, "Berhasil: Anda telah keluar", Toast.LENGTH_SHORT).show()
                     navController.navigate("login") {
                         popUpTo("petugas_dashboard") { inclusive = true }
                     }
@@ -94,6 +99,7 @@ fun AppNavigation() {
             AdminDashboard(
                 username = loggedInUsername,
                 onLogout = {
+                    Toast.makeText(context, "Berhasil: Anda telah keluar", Toast.LENGTH_SHORT).show()
                     navController.navigate("login") {
                         popUpTo("admin_dashboard") { inclusive = true }
                     }
@@ -105,6 +111,7 @@ fun AppNavigation() {
             DLHDashboard(
                 username = loggedInUsername,
                 onLogout = {
+                    Toast.makeText(context, "Berhasil: Anda telah keluar", Toast.LENGTH_SHORT).show()
                     navController.navigate("login") {
                         popUpTo("dlh_dashboard") { inclusive = true }
                     }
@@ -116,6 +123,7 @@ fun AppNavigation() {
             PetugasDokumentasiDashboard(
                 username = loggedInUsername,
                 onLogout = {
+                    Toast.makeText(context, "Berhasil: Anda telah keluar", Toast.LENGTH_SHORT).show()
                     navController.navigate("login") {
                         popUpTo("petugas_dokumentasi_dashboard") { inclusive = true }
                     }
