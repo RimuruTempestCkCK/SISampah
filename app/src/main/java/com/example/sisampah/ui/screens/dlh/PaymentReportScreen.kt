@@ -1,19 +1,15 @@
 package com.example.sisampah.ui.screens.dlh
 
 import android.content.Context
-import android.content.Intent
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Typeface
-import android.graphics.pdf.PdfDocument
-import android.net.Uri
-import android.os.Environment
+import android.print.PrintAttributes
+import android.print.PrintManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,22 +28,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.FileProvider
 import com.example.sisampah.data.MySqlHelper
-import com.example.sisampah.ui.screens.admin.StatCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
 private val Green700 = Color(0xFF2E7D32)
 private val Green500 = Color(0xFF4CAF50)
-private val BlueStat = Color(0xFF1565C0)
 private val RedAccent = Color(0xFFE53935)
-private val Amber500 = Color(0xFFFFC107)
 
 data class PaymentSummary(
     val username: String,
@@ -66,15 +56,8 @@ fun PaymentReportScreen() {
     var paymentSummaries by remember { mutableStateOf<List<PaymentSummary>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var totalPendapatan by remember { mutableStateOf(0.0) }
-    var totalLunas by remember { mutableStateOf(0) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
-
-    val bulanList = listOf(
-        "Januari 2026", "Februari 2026", "Maret 2026", "April 2026", 
-        "Mei 2026", "Juni 2026", "Juli 2026", "Agustus 2026", 
-        "September 2026", "Oktober 2026", "November 2026", "Desember 2026"
-    )
 
     fun loadData() {
         isLoading = true
@@ -94,15 +77,12 @@ fun PaymentReportScreen() {
                     val rs = conn.createStatement().executeQuery(query)
                     val list = mutableListOf<PaymentSummary>()
                     var grandTotal = 0.0
-                    var lunasCount = 0
                     
                     while (rs.next()) {
                         val user = rs.getString("username") ?: "Unknown"
                         val total = rs.getDouble("total")
-                        val status = rs.getString("status_terakhir") ?: "BELUM BAYAR"
                         
                         grandTotal += total
-                        if (status == "LUNAS") lunasCount++
 
                         // Get unpaid months for this user
                         val unpaidList = mutableListOf<String>()
@@ -119,7 +99,7 @@ fun PaymentReportScreen() {
                             user,
                             total,
                             rs.getInt("transaksi"),
-                            status,
+                            rs.getString("status_terakhir") ?: "BELUM BAYAR",
                             unpaidList
                         ))
                     }
@@ -127,7 +107,6 @@ fun PaymentReportScreen() {
                     withContext(Dispatchers.Main) {
                         paymentSummaries = list
                         totalPendapatan = grandTotal
-                        totalLunas = lunasCount
                         isLoading = false
                         errorMsg = null
                     }
@@ -151,7 +130,6 @@ fun PaymentReportScreen() {
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFFF5F5F5))) {
-        // Header Banner
         Box(
             Modifier.fillMaxWidth()
                 .background(Brush.horizontalGradient(listOf(Green700, Green500)))
@@ -162,7 +140,13 @@ fun PaymentReportScreen() {
                     Text("Laporan Pembayaran Iuran", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 }
                 Row {
-                    IconButton(onClick = { generatePdf(context, paymentSummaries, totalPendapatan) }) {
+                    IconButton(onClick = { 
+                        if (paymentSummaries.isNotEmpty()) {
+                            printPaymentReport(context, paymentSummaries, totalPendapatan)
+                        } else {
+                            Toast.makeText(context, "Tidak ada data untuk dicetak", Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
                         Icon(Icons.Default.Print, null, tint = Color.White, modifier = Modifier.size(28.dp))
                     }
                     IconButton(onClick = { loadData() }) {
@@ -277,89 +261,62 @@ fun PaymentReportScreen() {
                                     color = Color.Gray,
                                     lineHeight = 14.sp
                                 )
-                            } else {
-                                Spacer(Modifier.height(12.dp))
-                                Text("Sudah bayar semua bulan (2026)", fontSize = 11.sp, color = Green700, fontWeight = FontWeight.Medium)
                             }
                         }
                     }
                 }
-                
                 item { Spacer(Modifier.height(16.dp)) }
             }
         }
     }
 }
 
-fun generatePdf(context: Context, data: List<PaymentSummary>, totalPendapatan: Double) {
-    val pdfDocument = PdfDocument()
-    val paint = Paint()
-    val titlePaint = Paint()
-    
-    val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
-    val page = pdfDocument.startPage(pageInfo)
-    val canvas = page.canvas
-
-    // Header
-    titlePaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-    titlePaint.textSize = 18f
-    canvas.drawText("LAPORAN PEMBAYARAN IURAN SISAMPAL", 40f, 50f, titlePaint)
-    
-    paint.textSize = 10f
-    val date = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
-    canvas.drawText("Dicetak pada: $date", 40f, 70f, paint)
-    canvas.drawText("Total Pendapatan: Rp ${totalPendapatan.toInt()}", 40f, 85f, paint)
-
-    // Table Header
-    var yPos = 120f
-    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-    canvas.drawText("Nama Warga", 40f, yPos, paint)
-    canvas.drawText("Total Bayar", 180f, yPos, paint)
-    canvas.drawText("Transaksi", 280f, yPos, paint)
-    canvas.drawText("Status", 350f, yPos, paint)
-    canvas.drawText("Tunggakan (Bulan)", 420f, yPos, paint)
-    
-    canvas.drawLine(40f, yPos + 5, 550f, yPos + 5, paint)
-    yPos += 25f
-    
-    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-    data.forEach { item ->
-        if (yPos > 800f) { // Simple page break handling
-            pdfDocument.finishPage(page)
-            // This is simplified, for real apps use multiple pages logic
-            return@forEach 
+fun printPaymentReport(context: Context, data: List<PaymentSummary>, totalPendapatan: Double) {
+    val webView = WebView(context)
+    webView.webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String) {
+            val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+            val jobName = "Laporan_Pembayaran_SISAMPAH"
+            val printAdapter = webView.createPrintDocumentAdapter(jobName)
+            printManager.print(jobName, printAdapter, PrintAttributes.Builder().build())
         }
-        
-        canvas.drawText(item.username, 40f, yPos, paint)
-        canvas.drawText("Rp ${item.totalDibayar.toInt()}", 180f, yPos, paint)
-        canvas.drawText("${item.totalTransaksi}", 280f, yPos, paint)
-        canvas.drawText(item.statusTerakhir, 350f, yPos, paint)
-        
-        val tunggakan = if (item.bulanBelumBayar.isEmpty()) "-" else item.bulanBelumBayar.size.toString()
-        canvas.drawText(tunggakan, 420f, yPos, paint)
-        
-        yPos += 20f
     }
 
-    pdfDocument.finishPage(page)
+    val html = StringBuilder()
+    html.append("<html><head><style>")
+    html.append("table { width: 100%; border-collapse: collapse; margin-top: 20px; font-family: sans-serif; }")
+    html.append("th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 12px; }")
+    html.append("th { background-color: #2E7D32; color: white; }")
+    html.append("h2 { color: #2E7D32; text-align: center; margin-bottom: 5px; }")
+    html.append(".header { text-align: center; margin-bottom: 30px; }")
+    html.append(".total { font-weight: bold; background-color: #f9f9f9; }")
+    html.append("</style></head><body>")
+    
+    html.append("<div class='header'>")
+    html.append("<h2>LAPORAN REKAPITULASI PEMBAYARAN IURAN</h2>")
+    html.append("<p style='margin:0;'>Sistem Informasi Pengelolaan Sampah (SISAMPAH)</p>")
+    html.append("<p style='margin:5px 0;'>Dinas Lingkungan Hidup</p>")
+    html.append("</div>")
 
-    val fileName = "Laporan_Pembayaran_${System.currentTimeMillis()}.pdf"
-    val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
+    html.append("<p><b>Total Pendapatan:</b> Rp ${totalPendapatan.toInt()}</p>")
 
-    try {
-        pdfDocument.writeTo(FileOutputStream(file))
-        Toast.makeText(context, "PDF berhasil disimpan di Documents", Toast.LENGTH_LONG).show()
-        
-        // Open the PDF
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-        val intent = Intent(Intent.ACTION_VIEW)
-        intent.setDataAndType(uri, "application/pdf")
-        intent.flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-        context.startActivity(intent)
-        
-    } catch (e: Exception) {
-        Toast.makeText(context, "Gagal cetak: ${e.message}", Toast.LENGTH_SHORT).show()
-    } finally {
-        pdfDocument.close()
+    html.append("<table>")
+    html.append("<tr><th>No</th><th>Nama Warga</th><th>Total Bayar</th><th>Transaksi</th><th>Status</th><th>Bulan Belum Bayar</th></tr>")
+    
+    data.forEachIndexed { index, p ->
+        html.append("<tr>")
+        html.append("<td>${index + 1}</td>")
+        html.append("<td>${p.username}</td>")
+        html.append("<td>Rp ${p.totalDibayar.toInt()}</td>")
+        html.append("<td>${p.totalTransaksi}</td>")
+        html.append("<td>${p.statusTerakhir}</td>")
+        html.append("<td>${if (p.bulanBelumBayar.isEmpty()) "-" else p.bulanBelumBayar.joinToString(", ")}</td>")
+        html.append("</tr>")
     }
+    
+    html.append("</table>")
+    html.append("<p style='margin-top: 30px; font-size: 10px; color: #666;'>Dicetak secara otomatis melalui aplikasi SISAMPAH pada: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())}</p>")
+    html.append("</body></html>")
+
+    webView.loadDataWithBaseURL(null, html.toString(), "text/html", "UTF-8", null)
 }

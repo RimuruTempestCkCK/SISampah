@@ -73,10 +73,11 @@ fun MasyarakatDashboard(username: String, onLogout: () -> Unit) {
             NavigationBar(containerColor = Color.White) {
                 val tabs = listOf(
                     Triple("Beranda", Icons.Default.Home, 0),
-                    Triple("Lokasi",  Icons.Default.Map, 4),
+                    Triple("Jadwal",  Icons.Default.CalendarToday, 5),
                     Triple("Lapor",   Icons.Default.AddAPhoto, 1),
                     Triple("Status",  Icons.Default.History, 2),
-                    Triple("Tagihan", Icons.Default.Payments, 3)
+                    Triple("Tagihan", Icons.Default.Payments, 3),
+                    Triple("Lokasi",  Icons.Default.Map, 4)
                 )
                 tabs.forEach { (label, icon, idx) ->
                     NavigationBarItem(
@@ -101,6 +102,7 @@ fun MasyarakatDashboard(username: String, onLogout: () -> Unit) {
                 2 -> StatusScreen()
                 3 -> TagihanScreen(username)
                 4 -> MapScreen(username)
+                5 -> JadwalPetugasScreen()
             }
         }
     }
